@@ -81,8 +81,6 @@ async function startReplicate(imageDataUrl) {
   return json({
     type: 'polling',
     predictionId: prediction.id,
-    pollUrl: prediction.urls.get,
-    replicateToken: process.env.REPLICATE_API_KEY, // necesario para que el frontend pueda hacer polling
   });
 }
 

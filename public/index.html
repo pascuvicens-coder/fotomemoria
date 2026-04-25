@@ -1344,38 +1344,29 @@ async function callRestoreAPI(dataUrl, action) {
     return data.resultImage;
   }
 
-  // Polling (Replicate) — el frontend pregunta directamente a Replicate
+  // Polling (Replicate) — el frontend llama a /api/poll-prediction cada 3s
   if (data.type === 'polling') {
-    return await pollReplicate(data.pollUrl, data.replicateToken);
+    return await pollViaBackend(data.predictionId);
   }
 
   throw new Error('Respuesta desconocida del servidor');
 }
 
-// ─── POLLING DIRECTO A REPLICATE ─────────────────────────────────────────────
-async function pollReplicate(pollUrl, token) {
-  const MAX = 60; // máx 2 minutos (60 × 2s)
+// ─── POLLING VÍA NUESTRO BACKEND (sin exponer API keys) ──────────────────────
+async function pollViaBackend(predictionId) {
+  const MAX = 60; // máx 3 minutos (60 × 3s)
   for (let i = 0; i < MAX; i++) {
-    await wait(2000);
-    const res = await fetch(pollUrl, {
-      headers: { 'Authorization': `Token ${token}` },
-    });
+    await wait(3000);
+    const res = await fetch(`/api/poll-prediction?id=${predictionId}`);
     const data = await res.json();
 
     if (data.status === 'succeeded') {
-      // Descargar imagen y convertir a base64 para mostrar localmente
-      const imgRes = await fetch(data.output);
-      const blob = await imgRes.blob();
-      return await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
+      if (!data.resultImage) throw new Error('Sin imagen en la respuesta');
+      return data.resultImage;
     }
 
     if (data.status === 'failed' || data.status === 'canceled') {
-      throw new Error('La restauración falló en Replicate: ' + (data.error || ''));
+      throw new Error('La restauración falló. Reintenta con otra foto.');
     }
     // starting / processing → seguir esperando
   }
