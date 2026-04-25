@@ -813,14 +813,6 @@
     <section class="screen home active" id="screen-home">
       <div class="polaroid" id="polaroid">
         <div class="polaroid-window" id="polaroid-window">
-          <div class="empty-state" id="empty-state">
-            <svg width="48" height="48" viewBox="0 0 56 56" fill="none">
-              <rect x="6" y="12" width="44" height="36" rx="3" stroke="#7F98A3" stroke-width="2"/>
-              <circle cx="28" cy="30" r="9" stroke="#7F98A3" stroke-width="2"/>
-              <circle cx="28" cy="30" r="3.5" fill="#7F98A3"/>
-              <rect x="20" y="6" width="16" height="6" rx="2" stroke="#7F98A3" stroke-width="2"/>
-            </svg>
-          </div>
           <button class="fab" id="fab-btn" onclick="onFabClick()">
             <span id="fab-icon">+</span>
           </button>
@@ -1055,10 +1047,10 @@ function onFabClick() {
 
 function updateFab() {
   const fabIcon = document.getElementById('fab-icon');
-  const fabBtn = document.getElementById('fab-btn');
-  if (!fabIcon || !fabBtn) return;
+  if (!fabIcon) return;
   fabIcon.innerHTML = '+';
-  fabBtn.classList.remove('has-photo');
+  const fabBtn = document.getElementById('fab-btn');
+  if (fabBtn) fabBtn.classList.remove('has-photo');
 }
 
 // ============ MODAL TIPS ============
@@ -1116,30 +1108,48 @@ function pickSource(type) {
 
 function renderPolaroid() {
   const win = document.getElementById('polaroid-window');
-  const empty = document.getElementById('empty-state');
   const caption = document.getElementById('polaroid-caption');
   const resultActions = document.getElementById('result-actions');
+  const fab = document.getElementById('fab-btn');
 
-  win.innerHTML = '';
+  // Limpiar el contenido del window pero asegurarse de que el fab permanece
+  // Eliminamos solo los hijos que no sean el fab
+  Array.from(win.children).forEach(child => {
+    if (child.id !== 'fab-btn') child.remove();
+  });
+
   if (state.resultImage) {
     const img = document.createElement('img');
     img.src = state.resultImage;
-    win.appendChild(img);
+    win.insertBefore(img, fab);
     caption.textContent = '';
     caption.style.display = 'none';
     resultActions.classList.add('show');
+    fab.style.display = 'none';
   } else if (state.currentImage) {
     const img = document.createElement('img');
     img.src = state.currentImage;
-    win.appendChild(img);
+    win.insertBefore(img, fab);
     caption.textContent = '— elige una mejora —';
     caption.style.display = '';
     resultActions.classList.remove('show');
+    fab.style.display = 'none';
   } else {
-    win.appendChild(empty);
+    // Construir empty-state dinámicamente para evitar problemas de nodo desvinculado
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.innerHTML = `
+      <svg width="48" height="48" viewBox="0 0 56 56" fill="none">
+        <rect x="6" y="12" width="44" height="36" rx="3" stroke="#7F98A3" stroke-width="2"/>
+        <circle cx="28" cy="30" r="9" stroke="#7F98A3" stroke-width="2"/>
+        <circle cx="28" cy="30" r="3.5" fill="#7F98A3"/>
+        <rect x="20" y="6" width="16" height="6" rx="2" stroke="#7F98A3" stroke-width="2"/>
+      </svg>`;
+    win.insertBefore(empty, fab);
     caption.textContent = '— mi memoria —';
     caption.style.display = '';
     resultActions.classList.remove('show');
+    fab.style.display = '';
   }
 }
 
@@ -1424,6 +1434,7 @@ document.addEventListener('click', e => {
 
 // INIT
 updateFab();
+renderPolaroid();
 </script>
 
 <!-- MODAL ERROR -->

@@ -1,23 +1,30 @@
 /**
  * Restore — Vercel Node.js Function
  * POST /api/process-image
- * 
- * Stack: 100% Replicate
- *  - definition / color / colorize → flux-kontext-pro con prompt específico
- *  - restore                       → flux-kontext-apps/restore-image (todo en uno)
+ *
+ * Motores por acción (cada uno usa el modelo más adecuado):
+ *
+ *  definition  → nightmareai/real-esrgan
+ *                Modelo de super-resolución puro. No "entiende" la imagen,
+ *                solo aumenta píxeles. Nunca coloriza ni altera tonos.
+ *
+ *  colorize    → black-forest-labs/flux-kontext-pro
+ *                Editor de imagen guiado por texto. Aquí sí brilla: es
+ *                capaz de colorizar con contexto histórico preservando caras.
+ *
+ *  repair      → flux-kontext-apps/restore-image
+ *                Modelo especializado en fotos antiguas (daño físico).
+ *                Entrenado expresamente para manchas, arañazos y roturas.
  *
  * Variables de entorno:
  *   REPLICATE_API_KEY = r8_...
  */
 
 // ============================================================================
-// PROMPTS DE FLUX-KONTEXT — afinados quirúrgicamente
-// Cada acción hace UNA SOLA cosa, sin invadir el territorio de las otras.
-// La preservación de identidad es férrea en los tres.
+// PROMPTS — solo para colorize (flux-kontext-pro acepta texto)
 // ============================================================================
 
-// Bloqueo de identidad — se prepende a TODOS los prompts.
-const IDENTITY_LOCK = (
+const IDENTITY_LOCK =
   "ABSOLUTE RULE — IDENTITY PRESERVATION: " +
   "Do NOT alter, regenerate, redraw, beautify, idealize, smooth, or change in any way " +
   "the faces, facial features, facial expressions, eyes, nose, mouth, ears, hair style, " +
@@ -25,63 +32,38 @@ const IDENTITY_LOCK = (
   "of ANY person in the photograph. Every person must remain pixel-faithful to the original — " +
   "same exact face, same age, same expression, same identity. " +
   "Do NOT change the composition, framing, pose, or any object's shape. " +
-  "Do NOT regenerate or 'enhance' faces. Treat all human features as untouchable. "
-);
+  "Do NOT regenerate or enhance faces. Treat all human features as untouchable. ";
 
-// Bloqueo de scope — refuerza que la acción NO debe invadir otras tareas.
-const SCOPE_LOCK = (
-  "STAY IN YOUR LANE — Do ONLY the task described below. " +
-  "Do NOT do anything else. If the task is not listed below, do not do it. "
-);
+const SCOPE_LOCK =
+  "STAY IN YOUR LANE — Do ONLY the task described below. Do NOT do anything else. ";
 
 const PROMPTS = {
-  // ─── DEFINICIÓN — solo nitidez, NUNCA color ────────────────────────────────
-  definition: IDENTITY_LOCK + SCOPE_LOCK +
-    "TASK: Enhance the perceived resolution and sharpness of this photograph. " +
-    "Recover fine details and textures in fabric, hair, skin pores, eyes, background and surfaces. " +
-    "Reduce blur and softness. Make grain crisp and authentic. " +
-    "STRICT FORBIDDEN: do NOT add color, do NOT colorize, do NOT shift hues, do NOT change saturation. " +
-    "If the photograph is black-and-white or sepia, the output MUST remain black-and-white or sepia respectively. " +
-    "Do NOT change exposure, do NOT change contrast, do NOT alter lighting, do NOT remove damage or scratches. " +
-    "ONLY improve sharpness and recover detail. Treat this as a 'better scan, not a painting'.",
-
-  // ─── COLOREA — solo color, NUNCA nitidez ni reparación ─────────────────────
-  colorize: IDENTITY_LOCK + SCOPE_LOCK +
+  colorize:
+    IDENTITY_LOCK + SCOPE_LOCK +
     "TASK: Apply realistic, historically accurate colorization to this black and white or sepia photograph. " +
-    "Use natural, period-appropriate colors (early-to-mid 20th century palette by default, unless clothing or context indicate otherwise). " +
-    "Skin tones must be natural and match the apparent ethnicity of each person without altering their features. " +
-    "Clothing colors must look authentic to the era. Environmental hues (sky, foliage, walls, wood, metal) must be plausible. " +
-    "STRICT FORBIDDEN: do NOT increase resolution, do NOT sharpen, do NOT change definition, do NOT increase contrast beyond what colorization requires, " +
-    "do NOT remove scratches, dust, stains, tears or any physical damage. " +
-    "Do NOT oversaturate. Do NOT use vibrant or modern colors. The mood must remain vintage. " +
-    "ONLY add natural color where there is none.",
-
-  // ─── REPARA — solo daño físico, NUNCA color ni nitidez ────────────────────
-  repair: IDENTITY_LOCK + SCOPE_LOCK +
-    "TASK: Repair physical damage in this photograph. " +
-    "Specifically: remove scratches, dust spots, stains, tears, creases, fold marks, fingerprints, water marks, mold spots, " +
-    "missing corners, torn edges, and emulsion damage. Reconstruct each damaged area to seamlessly match the surrounding " +
-    "content, textures, grain and tone of the original. " +
-    "STRICT FORBIDDEN: do NOT add color, do NOT colorize, do NOT shift hues, do NOT change saturation. " +
-    "If the photograph is black-and-white or sepia, the output MUST remain black-and-white or sepia respectively. " +
-    "Do NOT increase resolution, do NOT sharpen, do NOT change exposure, do NOT alter contrast or lighting. " +
-    "ONLY repair physical damage. The repaired areas must be invisible — they should look like the damage was never there.",
+    "Use natural, period-appropriate colors (early-to-mid 20th century palette unless context indicates otherwise). " +
+    "Skin tones: natural, warm, matching apparent ethnicity — never orange or washed out. " +
+    "Clothing: muted, era-authentic colors (navy, olive, burgundy, grey, beige). " +
+    "Backgrounds: natural hues — stone walls warm grey, wood brown, sky pale blue, foliage muted green. " +
+    "Keep the vintage mood: slightly desaturated, never vivid or modern. " +
+    "FORBIDDEN: do NOT change resolution, sharpness, or contrast beyond what the colorization itself requires. " +
+    "Do NOT remove scratches, tears, or physical damage. ONLY add color.",
 };
 
-// Modelos en Replicate (versiones más recientes)
-const MODELS = {
-  // flux-kontext-pro: edición conversacional
-  edit: 'black-forest-labs/flux-kontext-pro',
-  // flux-kontext-apps/restore-image: restauración total automática
-  restore: 'flux-kontext-apps/restore-image',
-};
+// ============================================================================
+// MODELOS
+// ============================================================================
+
+const REALESRGAN_MODEL  = 'nightmareai/real-esrgan';
+const FLUX_KONTEXT_MODEL = 'black-forest-labs/flux-kontext-pro';
+const RESTORE_MODEL     = 'flux-kontext-apps/restore-image';
+
+// ============================================================================
 
 export const config = {
   maxDuration: 60,
   api: {
-    bodyParser: {
-      sizeLimit: '5mb',
-    },
+    bodyParser: { sizeLimit: '5mb' },
   },
 };
 
@@ -100,38 +82,53 @@ export default async function handler(req, res) {
   if (!apiKey) return res.status(500).json({ error: 'REPLICATE_API_KEY not configured' });
 
   try {
+    let modelPath;
     let body;
 
-    if (action === 'restore') {
-      // flux-kontext-apps/restore-image: especialista en fotos antiguas.
-      // Solo acepta input_image y seed; preserva rostros por diseño del modelo.
+    if (action === 'definition') {
+      // Real-ESRGAN: super-resolución pura, sin texto, sin edición creativa.
+      // face_enhance activa GFPGAN internamente para proteger rostros.
+      modelPath = REALESRGAN_MODEL;
       body = {
         input: {
-          input_image: image,
+          image,
+          scale: 4,
+          face_enhance: true,
         },
       };
-    } else {
-      // flux-kontext-pro con prompt específico
-      const prompt = PROMPTS[action];
-      if (!prompt) return res.status(400).json({ error: `Unknown action: ${action}` });
+
+    } else if (action === 'colorize') {
+      // flux-kontext-pro: edición guiada por texto → ideal para colorizar.
+      modelPath = FLUX_KONTEXT_MODEL;
       body = {
         input: {
-          prompt,
+          prompt: PROMPTS.colorize,
           input_image: image,
           output_format: 'jpg',
-          safety_tolerance: 6, // máximo permisivo (1-6)
+          safety_tolerance: 6,
         },
       };
+
+    } else if (action === 'repair') {
+      // restore-image: especialista en daño físico de fotografías antiguas.
+      // Sin prompt — el modelo sabe lo que tiene que hacer con la imagen sola.
+      modelPath = RESTORE_MODEL;
+      body = {
+        input: {
+          input_image: image,
+        },
+      };
+
+    } else {
+      return res.status(400).json({ error: `Unknown action: ${action}` });
     }
 
-    // Usar el endpoint oficial del modelo (sin necesidad de version hash)
-    const modelPath = MODELS[action === 'restore' ? 'restore' : 'edit'];
     const r = await fetch(`https://api.replicate.com/v1/models/${modelPath}/predictions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Token ${apiKey}`,
+        Authorization: `Token ${apiKey}`,
         'Content-Type': 'application/json',
-        'Prefer': 'wait=5', // espera hasta 5s por si termina rápido
+        Prefer: 'wait=5',
       },
       body: JSON.stringify(body),
     });
@@ -144,7 +141,6 @@ export default async function handler(req, res) {
 
     const prediction = await r.json();
 
-    // Si ya terminó (raro pero posible con Prefer: wait)
     if (prediction.status === 'succeeded' && prediction.output) {
       const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
       const imgRes = await fetch(outputUrl);
@@ -157,7 +153,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Lo normal: devolver predictionId para que el frontend haga polling
     return res.status(200).json({
       type: 'polling',
       predictionId: prediction.id,
