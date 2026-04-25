@@ -1248,7 +1248,7 @@ const ACTIONS = {
   definition: { name: 'Mejorando definición', msgs: ['Analizando texturas','Reconstruyendo detalles','Afinando bordes'] },
   color: { name: 'Equilibrando color y luz', msgs: ['Leyendo histograma','Recuperando sombras','Calibrando blancos'] },
   colorize: { name: 'Devolviéndole el color', msgs: ['Identificando rostros','Eligiendo paleta histórica','Aplicando tonos naturales'] },
-  restore: { name: 'Restauración completa', msgs: ['Limpiando arañazos','Reconstruyendo zonas dañadas','Equilibrando exposición','Devolviendo el color','Afinando rostros'] },
+  restore: { name: 'Restauración completa', msgs: ['Analizando daños...','Limpiando arañazos...','Reconstruyendo detalles...','Restaurando rostros (puede tardar 30-60 seg)...','Últimos retoques...'] },
 };
 
 async function processImage(action) {
@@ -1298,8 +1298,10 @@ async function processImage(action) {
         'El servidor de procesado no está configurado todavía.',
         'Despliega el archivo <code>api/process-image.js</code> en Vercel y añade tu <code>OPENAI_API_KEY</code> en las variables de entorno.'
       );
+    } else if (err.code === 'timeout') {
+      toast(err.message);
     } else {
-      toast('Algo ha ido mal. Reintenta en un momento.');
+      toast('Error: ' + (err.message || 'Reintenta en un momento.'));
       console.error(err);
     }
   }
@@ -1318,22 +1320,30 @@ async function callRestoreAPI(dataUrl, action) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: dataUrl, action }),
-      signal: AbortSignal.timeout(90_000), // 90 seg máximo
+      signal: AbortSignal.timeout(180_000), // 3 min — Replicate puede tardar
     });
   } catch (networkErr) {
-    // fetch falló del todo → probablemente no hay backend
+    if (networkErr.name === 'TimeoutError') {
+      const err = new Error('Tardó demasiado. Reintenta con una foto más pequeña.');
+      err.code = 'timeout';
+      throw err;
+    }
     const err = new Error('No backend');
     err.code = 'no_backend';
     throw err;
   }
 
-  const data = await res.json();
+  let data;
+  try { data = await res.json(); }
+  catch { throw new Error('Respuesta inválida del servidor'); }
 
   if (!res.ok) {
     const err = new Error(data.message || 'Error del servidor');
     err.code = data.error || 'server_error';
     throw err;
   }
+
+  if (!data.resultImage) throw new Error('El servidor no devolvió imagen');
 
   return data.resultImage;
 }
