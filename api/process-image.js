@@ -1,17 +1,18 @@
 /**
- * Restore — Vercel Edge Function
+ * Restore — Vercel Function
  * POST /api/process-image
  *
- * Variables de entorno en Vercel:
+ * Estrategia sin timeout:
+ *   1. Este endpoint crea la predicción en Replicate/OpenAI y devuelve inmediatamente
+ *   2. Para Replicate devuelve { predictionId, pollUrl } y el frontend hace el polling
+ *   3. Para OpenAI espera el resultado (rápido, <15s)
+ *
+ * Variables de entorno:
  *   OPENAI_API_KEY    = sk-proj-...
  *   REPLICATE_API_KEY = r8_...
- *
- * Estrategia:
- *   definition / color / colorize → OpenAI gpt-image-1
- *   restore                       → Replicate GFPGAN (sin filtros, especializado en fotos antiguas)
  */
 
-export const config = { runtime: 'edge' };
+export const config = { maxDuration: 60 };
 
 const OPENAI_PROMPTS = {
   definition: `Professional archival digitization: enhance the sharpness and clarity of this historical photograph. Increase apparent resolution and recover fine details in textures, clothing and background. Reduce blur and grain noise while preserving the authentic vintage character. Non-commercial archival project.`,
@@ -40,56 +41,52 @@ export default async function handler(req) {
   if (!image || !action) return json({ error: 'Missing image or action' }, 400);
 
   try {
-    return action === 'restore'
-      ? await processWithReplicate(image)
-      : await processWithOpenAI(image, action);
+    if (action === 'restore') {
+      return await startReplicate(image);   // devuelve pollUrl al frontend
+    } else {
+      return await processWithOpenAI(image, action);  // espera resultado
+    }
   } catch (err) {
     console.error('process-image error:', err);
     return json({ error: 'processing_failed', message: err.message }, 500);
   }
 }
 
-async function processWithReplicate(imageDataUrl) {
+// ─── REPLICATE: crea predicción y devuelve pollUrl ────────────────────────────
+async function startReplicate(imageDataUrl) {
   const apiKey = process.env.REPLICATE_API_KEY;
   if (!apiKey) throw new Error('REPLICATE_API_KEY not configured');
 
-  const createRes = await fetch('https://api.replicate.com/v1/predictions', {
+  const res = await fetch('https://api.replicate.com/v1/predictions', {
     method: 'POST',
     headers: { 'Authorization': `Token ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       version: 'f121d640bd286e1fdc67f9799164c1d5be36ff74576ee11c803ae5b665dd46aa',
       input: {
         image: imageDataUrl,
-        scale: 4,              // upscale x4
-        face_enhance: true,    // activa GFPGAN internamente para rostros
+        scale: 4,
+        face_enhance: true,
       },
     }),
   });
 
-  if (!createRes.ok) throw new Error(`Replicate create: ${createRes.status} ${await createRes.text()}`);
-
-  const prediction = await createRes.json();
-  const pollUrl = prediction.urls?.get;
-  if (!pollUrl) throw new Error('No polling URL from Replicate');
-
-  for (let i = 0; i < 30; i++) {
-    await wait(2000);
-    const poll = await fetch(pollUrl, { headers: { 'Authorization': `Token ${apiKey}` } });
-    const result = await poll.json();
-
-    if (result.status === 'succeeded') {
-      const imgRes = await fetch(result.output);
-      const b64 = bufferToBase64(await imgRes.arrayBuffer());
-      const mime = imgRes.headers.get('content-type') || 'image/png';
-      return json({ resultImage: `data:${mime};base64,${b64}` });
-    }
-    if (result.status === 'failed' || result.status === 'canceled') {
-      throw new Error(`Replicate ${result.status}: ${result.error || ''}`);
-    }
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Replicate create: ${res.status} ${err}`);
   }
-  throw new Error('Replicate timeout');
+
+  const prediction = await res.json();
+
+  // Devolvemos el pollUrl para que el frontend haga el polling directamente
+  return json({
+    type: 'polling',
+    predictionId: prediction.id,
+    pollUrl: prediction.urls.get,
+    replicateToken: process.env.REPLICATE_API_KEY, // necesario para que el frontend pueda hacer polling
+  });
 }
 
+// ─── OPENAI: espera resultado directamente ────────────────────────────────────
 async function processWithOpenAI(imageDataUrl, action) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
@@ -121,7 +118,7 @@ async function processWithOpenAI(imageDataUrl, action) {
     if (res.status === 400) {
       return new Response(JSON.stringify({
         error: 'content_policy',
-        message: 'Imagen rechazada por políticas de contenido. Prueba con Restaurar todo.',
+        message: 'Imagen rechazada por políticas de contenido. Prueba con Restaurar.',
       }), { status: 422, headers: { ...CORS, 'Content-Type': 'application/json' } });
     }
     throw new Error(`OpenAI ${res.status}: ${errText}`);
@@ -130,9 +127,13 @@ async function processWithOpenAI(imageDataUrl, action) {
   const data = await res.json();
   const b64 = data?.data?.[0]?.b64_json;
   if (!b64) throw new Error('No image in OpenAI response');
-  return json({ resultImage: `data:image/png;base64,${b64}` });
+
+  return json({ type: 'result', resultImage: `data:image/png;base64,${b64}` });
 }
 
-function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
-function base64ToBytes(b64) { const bin = atob(b64); const b = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i); return b; }
-function bufferToBase64(buf) { const b = new Uint8Array(buf); let s = ''; for (let i = 0; i < b.byteLength; i++) s += String.fromCharCode(b[i]); return btoa(s); }
+function base64ToBytes(b64) {
+  const bin = atob(b64);
+  const b = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+  return b;
+}

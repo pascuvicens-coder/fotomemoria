@@ -1311,7 +1311,7 @@ function wait(ms){ return new Promise(r => setTimeout(r, ms)); }
 
 // ─── LLAMADA AL BACKEND ──────────────────────────────────────────────────────
 async function callRestoreAPI(dataUrl, action) {
-  // Mientras estés en local sin backend, activa el modo simulación:
+  // Para desarrollo local sin backend, descomenta:
   // return simulateRestoration(dataUrl, action);
 
   let res;
@@ -1320,14 +1320,9 @@ async function callRestoreAPI(dataUrl, action) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: dataUrl, action }),
-      signal: AbortSignal.timeout(180_000), // 3 min — Replicate puede tardar
+      signal: AbortSignal.timeout(30_000), // solo para crear la predicción
     });
   } catch (networkErr) {
-    if (networkErr.name === 'TimeoutError') {
-      const err = new Error('Tardó demasiado. Reintenta con una foto más pequeña.');
-      err.code = 'timeout';
-      throw err;
-    }
     const err = new Error('No backend');
     err.code = 'no_backend';
     throw err;
@@ -1343,9 +1338,48 @@ async function callRestoreAPI(dataUrl, action) {
     throw err;
   }
 
-  if (!data.resultImage) throw new Error('El servidor no devolvió imagen');
+  // Resultado directo (OpenAI)
+  if (data.type === 'result') {
+    if (!data.resultImage) throw new Error('Sin imagen en la respuesta');
+    return data.resultImage;
+  }
 
-  return data.resultImage;
+  // Polling (Replicate) — el frontend pregunta directamente a Replicate
+  if (data.type === 'polling') {
+    return await pollReplicate(data.pollUrl, data.replicateToken);
+  }
+
+  throw new Error('Respuesta desconocida del servidor');
+}
+
+// ─── POLLING DIRECTO A REPLICATE ─────────────────────────────────────────────
+async function pollReplicate(pollUrl, token) {
+  const MAX = 60; // máx 2 minutos (60 × 2s)
+  for (let i = 0; i < MAX; i++) {
+    await wait(2000);
+    const res = await fetch(pollUrl, {
+      headers: { 'Authorization': `Token ${token}` },
+    });
+    const data = await res.json();
+
+    if (data.status === 'succeeded') {
+      // Descargar imagen y convertir a base64 para mostrar localmente
+      const imgRes = await fetch(data.output);
+      const blob = await imgRes.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    if (data.status === 'failed' || data.status === 'canceled') {
+      throw new Error('La restauración falló en Replicate: ' + (data.error || ''));
+    }
+    // starting / processing → seguir esperando
+  }
+  throw new Error('Tiempo de espera agotado. Reintenta.');
 }
 
 // ─── SIMULADOR LOCAL (para desarrollo sin backend) ───────────────────────────
