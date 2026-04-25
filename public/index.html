@@ -74,9 +74,12 @@
 
   .brand {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 10px;
+    flex-wrap: nowrap;
+    overflow: hidden;
   }
+  .brand-logo, .brand-name { flex-shrink: 0; }
 
   .brand-logo {
     width: 32px;
@@ -142,26 +145,24 @@
       radial-gradient(ellipse at top, rgba(169,188,196,0.35), transparent 60%),
       radial-gradient(ellipse at bottom right, rgba(216,184,154,0.25), transparent 50%),
       var(--blanco-calido);
-    padding: 16px 20px 20px;
+    padding: 8px 20px 20px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
   }
 
-  .home-eyebrow {
-    text-align: center;
-    margin-bottom: 14px;
-  }
-  .home-eyebrow .title {
+  .tagline {
     font-family: 'Caveat', cursive;
-    font-size: 19px;
-    color: var(--negro-suave);
-    line-height: 1.1;
-    transform: rotate(-1.2deg);
+    font-size: 17px;
+    color: var(--azul-medio);
+    line-height: 1;
+    margin-left: 6px;
+    transform: rotate(-1deg) translateY(2px);
     display: inline-block;
     white-space: nowrap;
   }
+  @media (max-width: 380px) { .tagline { font-size: 14px; max-width: 130px; white-space: normal; line-height: 1.05; } }
 
   .polaroid {
     width: 100%;
@@ -171,9 +172,9 @@
     box-shadow: var(--sombra-marco);
     padding: 18px 18px 60px;
     position: relative;
-    transform: rotate(-1.5deg);
+    transform: rotate(-0.5deg);
     transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-    margin-top: 8px;
+    margin-top: 0;
   }
   .polaroid::before {
     /* sutil tinte de papel viejo */
@@ -719,8 +720,8 @@
   /* dos rollos de carrete girando */
   .reel-stage {
     position: relative;
-    width: 240px;
-    height: 130px;
+    width: 280px;
+    height: 60px;
   }
   .reel {
     position: absolute;
@@ -760,13 +761,14 @@
   .film-strip {
     position: absolute;
     top: 50%;
-    left: 50px;
-    right: 50px;
-    height: 36px;
+    left: 0;
+    right: 0;
+    height: 50px;
     transform: translateY(-50%);
     background: var(--negro-suave);
-    border-radius: 2px;
+    border-radius: 4px;
     overflow: hidden;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
   }
   .film-strip::before, .film-strip::after {
     content: '';
@@ -783,10 +785,10 @@
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    width: 28px;
-    height: 22px;
+    width: 38px;
+    height: 30px;
     background: var(--azul-claro);
-    border-radius: 1px;
+    border-radius: 2px;
     animation: slide 1.4s linear infinite;
   }
   .film-strip .frame:nth-child(1) { background: var(--madera); animation-delay: 0s; }
@@ -795,7 +797,7 @@
   .film-strip .frame:nth-child(4) { background: var(--verde-musgo); animation-delay: -1.05s; }
 
   @keyframes slide {
-    from { left: -32px; }
+    from { left: -42px; }
     to { left: 100%; }
   }
 
@@ -827,15 +829,27 @@
   /* ============ RESULTADO ============ */
   .result-actions {
     position: absolute;
-    bottom: 16px;
-    left: 50%;
-    transform: translateX(-50%);
+    bottom: 12px;
+    left: 0;
+    right: 0;
+    transform: none;
     display: none;
-    gap: 10px;
+    gap: 8px;
     z-index: 25;
-    white-space: nowrap;
+    justify-content: center;
+    align-items: center;
+    padding: 0 18px;
   }
   .result-actions.show { display: flex; }
+  .result-btn.icon-btn {
+    padding: 10px;
+    width: 40px;
+    height: 40px;
+    justify-content: center;
+  }
+  .result-btn.primary-btn {
+    padding: 10px 18px;
+  }
   .result-btn {
     background: var(--negro-suave);
     color: var(--blanco-calido);
@@ -906,6 +920,7 @@
     <div class="brand">
       <div class="brand-logo"></div>
       <div class="brand-name">Re<span class="em">store</span></div>
+      <div class="tagline">¿qué historia vas a rescatar hoy?</div>
     </div>
 
   </div>
@@ -915,10 +930,6 @@
 
     <!-- PANTALLA HOME -->
     <section class="screen home active" id="screen-home">
-      <div class="home-eyebrow">
-        <span class="title">¿qué historia vas a rescatar hoy?</span>
-      </div>
-
       <div class="polaroid" id="polaroid">
         <div class="washi washi-tl"></div>
         <div class="washi washi-tr"></div>
@@ -940,13 +951,15 @@
 
       <!-- Acciones de resultado -->
       <div class="result-actions" id="result-actions">
-        <button class="result-btn secondary" onclick="discardResult()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
-          Descartar
+        <button class="result-btn icon-btn secondary" onclick="discardResult()" aria-label="Descartar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
-        <button class="result-btn" onclick="saveResult()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-          Guardar
+        <button class="result-btn primary-btn" onclick="saveResult()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Descargar
+        </button>
+        <button class="result-btn icon-btn secondary" onclick="shareResult()" aria-label="Compartir">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
         </button>
       </div>
     </section>
@@ -1013,14 +1026,12 @@
   <!-- Procesando overlay (sobre todo el content) -->
   <div class="processing" id="processing">
     <div class="reel-stage">
-      <div class="reel left"></div>
       <div class="film-strip">
         <div class="frame"></div>
         <div class="frame"></div>
         <div class="frame"></div>
         <div class="frame"></div>
       </div>
-      <div class="reel right"></div>
     </div>
     <div class="processing-text">
       <div class="label">Restaurando</div>
@@ -1033,17 +1044,13 @@
       <span class="icon">🔍</span>
       <div class="name">Definición</div>
     </button>
-    <button class="prompt-chip" data-action="color" onclick="processImage('color')">
-      <span class="icon">💡</span>
-      <div class="name">Color y luz</div>
-    </button>
     <button class="prompt-chip" data-action="colorize" onclick="processImage('colorize')">
       <span class="icon">🎨</span>
-      <div class="name">Colorizar</div>
+      <div class="name">Colorea</div>
     </button>
-    <button class="prompt-chip" data-action="restore" onclick="processImage('restore')">
-      <span class="icon">✨</span>
-      <div class="name">Restaurar todo</div>
+    <button class="prompt-chip" data-action="repair" onclick="processImage('repair')">
+      <span class="icon">🩹</span>
+      <div class="name">Repara arañazos</div>
     </button>
   </div>
 
@@ -1152,16 +1159,9 @@ function onFabClick() {
 function updateFab() {
   const fabIcon = document.getElementById('fab-icon');
   const fabBtn = document.getElementById('fab-btn');
-  if (state.resultImage) {
-    fabIcon.innerHTML = '+';
-    fabBtn.classList.remove('has-photo');
-  } else if (state.currentImage) {
-    fabIcon.innerHTML = '+';
-    fabBtn.classList.remove('has-photo');
-  } else {
-    fabIcon.innerHTML = '+';
-    fabBtn.classList.remove('has-photo');
-  }
+  if (!fabIcon || !fabBtn) return;
+  fabIcon.innerHTML = '+';
+  fabBtn.classList.remove('has-photo');
 }
 
 // ============ MODAL TIPS ============
@@ -1228,17 +1228,20 @@ function renderPolaroid() {
     const img = document.createElement('img');
     img.src = state.resultImage;
     win.appendChild(img);
-    caption.textContent = '— restaurada —';
+    caption.textContent = '';
+    caption.style.display = 'none';
     resultActions.classList.add('show');
   } else if (state.currentImage) {
     const img = document.createElement('img');
     img.src = state.currentImage;
     win.appendChild(img);
     caption.textContent = '— elige una mejora —';
+    caption.style.display = '';
     resultActions.classList.remove('show');
   } else {
     win.appendChild(empty);
     caption.textContent = '— mi memoria —';
+    caption.style.display = '';
     resultActions.classList.remove('show');
   }
 }
@@ -1246,9 +1249,8 @@ function renderPolaroid() {
 // ============ PROCESAR ============
 const ACTIONS = {
   definition: { name: 'Mejorando definición', msgs: ['Analizando texturas','Reconstruyendo detalles','Afinando bordes'] },
-  color: { name: 'Equilibrando color y luz', msgs: ['Leyendo histograma','Recuperando sombras','Calibrando blancos'] },
-  colorize: { name: 'Devolviéndole el color', msgs: ['Identificando rostros','Eligiendo paleta histórica','Aplicando tonos naturales'] },
-  restore: { name: 'Restauración completa', msgs: ['Analizando daños...','Limpiando arañazos...','Reconstruyendo detalles...','Restaurando rostros (puede tardar 30-60 seg)...','Últimos retoques...'] },
+  colorize: { name: 'Coloreando', msgs: ['Identificando elementos','Eligiendo paleta histórica','Aplicando tonos naturales'] },
+  repair: { name: 'Reparando arañazos', msgs: ['Detectando daños','Reconstruyendo zonas','Difuminando bordes'] },
 };
 
 async function processImage(action) {
@@ -1296,7 +1298,7 @@ async function processImage(action) {
       showErrorModal(
         'Backend no conectado',
         'El servidor de procesado no está configurado todavía.',
-        'Despliega el archivo <code>api/process-image.js</code> en Vercel y añade tu <code>OPENAI_API_KEY</code> en las variables de entorno.'
+        'Comprueba que el último despliegue en Vercel ha terminado correctamente.'
       );
     } else if (err.code === 'timeout') {
       toast(err.message);
@@ -1406,7 +1408,7 @@ function simulateRestoration(dataUrl, action) {
       const ctx = canvas.getContext('2d');
       switch (action) {
         case 'definition': ctx.filter = 'contrast(1.15) saturate(1.05)'; break;
-        case 'color':      ctx.filter = 'brightness(1.08) contrast(1.12) saturate(1.1)'; break;
+        case 'repair':     ctx.filter = 'contrast(1.1) brightness(1.05)'; break;
         case 'colorize':   ctx.filter = 'sepia(0.15) saturate(1.4) hue-rotate(-10deg) contrast(1.05)'; break;
         case 'restore':    ctx.filter = 'contrast(1.18) saturate(1.2) brightness(1.05)'; break;
       }
@@ -1419,6 +1421,25 @@ function simulateRestoration(dataUrl, action) {
 }
 
 // ============ RESULTADO ============
+async function shareResult() {
+  if (!state.resultImage) return;
+  try {
+    const blob = await (await fetch(state.resultImage)).blob();
+    const file = new File([blob], `restore-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'Restore', text: 'Foto restaurada con Restore' });
+    } else if (navigator.share) {
+      await navigator.share({ title: 'Restore', text: 'Foto restaurada con Restore' });
+    } else {
+      // Fallback: copiar al portapapeles
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      toast('Imagen copiada al portapapeles');
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') toast('No se pudo compartir');
+  }
+}
+
 function saveResult() {
   if (!state.resultImage) return;
   const item = {
@@ -1438,7 +1459,7 @@ function saveResult() {
     state.carrete = state.carrete.slice(0, 6);
     try { localStorage.setItem('fm_carrete', JSON.stringify(state.carrete)); } catch(e2){}
   }
-  toast('Guardada en tu carrete');
+  toast('Descargada y guardada');
 
   // descargar también
   const link = document.createElement('a');
@@ -1480,7 +1501,7 @@ function renderCarrete() {
   let html = '<div class="filmstrip"><div class="filmstrip-grid">';
   state.carrete.forEach(item => {
     const actionLabel = {
-      definition: 'DEF', color: 'COLOR', colorize: 'COLORIZADA', restore: 'RESTAURADA'
+      definition: 'DEF', colorize: 'COLOR', repair: 'REPARADA'
     }[item.action] || '✓';
     html += `
       <div class="photo-item">
