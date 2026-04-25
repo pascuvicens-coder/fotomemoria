@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#A9BCC4" />
+<title>FotoMemoria</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600;700;800&family=Caveat:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --azul-claro: #A9BCC4;
+    --azul-medio: #7F98A3;
+    --madera: #D8B89A;
+    --madera-oscura: #BC9974;
+    --blanco-calido: #F4F4F2;
+    --gris-fondo: #E6E6E6;
+    --gris-medio: #BFC3C6;
+    --negro-suave: #2F2F2F;
+    --acento: #C4634C;       /* rojo terracota retro para acentos */
+    --verde-musgo: #6B8E6B;
+    --sombra-suave: 0 4px 20px rgba(47,47,47,0.08);
+    --sombra-marco: 0 30px 60px -20px rgba(47,47,47,0.35), 0 18px 36px -18px rgba(47,47,47,0.25);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overscroll-behavior: none; }
+
+  body {
+    font-family: 'Archivo', -apple-system, sans-serif;
+    background: var(--gris-fondo);
+    color: var(--negro-suave);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* TEXTURA GRANO GLOBAL */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.045'/></svg>");
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    z-index: 9999;
+  }
+
+  /* APP CONTAINER */
+  .app {
+    height: 100vh;
+    height: 100dvh;
+    max-width: 480px;
+    margin: 0 auto;
+    background: var(--blanco-calido);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 60px rgba(47,47,47,0.08);
+    overflow: hidden;
+  }
+
+  /* TOP BAR */
+  .topbar {
+    padding: 18px 22px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--blanco-calido);
+    border-bottom: 1px solid rgba(47,47,47,0.06);
+    z-index: 10;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .brand-logo {
+    width: 32px;
+    height: 32px;
+    background: var(--negro-suave);
+    border-radius: 6px;
+    display: grid;
+    place-items: center;
+    position: relative;
+  }
+  .brand-logo::before {
+    content: '';
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--azul-claro);
+    border: 2px solid var(--blanco-calido);
+  }
+  .brand-logo::after {
+    content: '';
+    position: absolute;
+    top: 6px; right: 6px;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--acento);
+  }
+
+  .brand-name {
+    font-family: 'Archivo', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    letter-spacing: -0.02em;
+  }
+  .brand-name .em { color: var(--azul-medio); }
+
+  .credits {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--negro-suave);
+    background: var(--gris-fondo);
+    padding: 6px 12px;
+    border-radius: 100px;
+    font-weight: 500;
+  }
+  .credits .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--verde-musgo);
+  }
+
+  /* CONTENT AREA */
+  .content {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .screen {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+    -webkit-overflow-scrolling: touch;
+  }
+  .screen.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* ============ PANTALLA PRINCIPAL: POLAROID ============ */
+  .home {
+    background:
+      radial-gradient(ellipse at top, rgba(169,188,196,0.35), transparent 60%),
+      radial-gradient(ellipse at bottom right, rgba(216,184,154,0.25), transparent 50%),
+      var(--blanco-calido);
+    padding: 16px 20px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .home-eyebrow {
+    text-align: center;
+    margin-bottom: 14px;
+  }
+  .home-eyebrow .title {
+    font-family: 'Caveat', cursive;
+    font-size: 19px;
+    color: var(--negro-suave);
+    line-height: 1.1;
+    transform: rotate(-1.2deg);
+    display: inline-block;
+    white-space: nowrap;
+  }
+
+  .polaroid {
+    width: 100%;
+    max-width: 360px;
+    aspect-ratio: 4 / 5.2;
+    background: var(--blanco-calido);
+    box-shadow: var(--sombra-marco);
+    padding: 18px 18px 60px;
+    position: relative;
+    transform: rotate(-1.5deg);
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    margin-top: 8px;
+  }
+  .polaroid::before {
+    /* sutil tinte de papel viejo */
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(160deg, rgba(216,184,154,0.08), transparent 40%, rgba(169,188,196,0.06));
+    pointer-events: none;
+  }
+
+  /* cinta washi decorativa */
+  .washi {
+    position: absolute;
+    width: 70px;
+    height: 22px;
+    background: rgba(216,184,154,0.55);
+    border-left: 2px dashed rgba(255,255,255,0.4);
+    border-right: 2px dashed rgba(255,255,255,0.4);
+    box-shadow: 0 2px 4px rgba(47,47,47,0.1);
+  }
+  .washi-tl { top: -8px; left: -10px; transform: rotate(-25deg); }
+  .washi-tr { top: -8px; right: -12px; transform: rotate(20deg); background: rgba(169,188,196,0.55); }
+
+  .polaroid-window {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background:
+      repeating-linear-gradient(45deg, rgba(47,47,47,0.03) 0 2px, transparent 2px 12px),
+      var(--gris-fondo);
+    border: 1px solid rgba(47,47,47,0.08);
+    display: grid;
+    place-items: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .polaroid-window img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 24px;
+    color: var(--azul-medio);
+  }
+  .empty-state svg {
+    margin: 0 auto 14px;
+    opacity: 0.55;
+  }
+  .empty-state .hint {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--azul-medio);
+    max-width: 200px;
+    margin: 0 auto;
+  }
+
+  .polaroid-caption {
+    position: absolute;
+    bottom: 16px;
+    left: 0; right: 0;
+    text-align: center;
+    font-family: 'Caveat', cursive;
+    font-size: 22px;
+    color: var(--negro-suave);
+    transform: rotate(-0.5deg);
+  }
+
+  /* BOTÓN + DENTRO DE LA POLAROID */
+  .fab {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    border: none;
+    background: var(--negro-suave);
+    color: var(--blanco-calido);
+    font-size: 36px;
+    font-weight: 300;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 12px 28px rgba(47,47,47,0.35), inset 0 -3px 0 rgba(0,0,0,0.25);
+    display: grid;
+    place-items: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+  }
+  .fab:active { transform: translate(-50%, -50%) scale(0.93); }
+  .fab.has-photo {
+    background: var(--acento);
+  }
+
+  /* MENÚ DE PROMPTS — barra fija deslizable */
+  .prompt-menu {
+    position: relative;
+    display: flex;
+    gap: 10px;
+    padding: 10px 16px 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    background: var(--blanco-calido);
+    border-top: 1px solid rgba(47,47,47,0.06);
+    z-index: 15;
+  }
+  .prompt-menu::-webkit-scrollbar { display: none; }
+
+  .prompt-chip {
+    flex-shrink: 0;
+    background: var(--blanco-calido);
+    border: 1px solid rgba(47,47,47,0.08);
+    border-radius: 16px;
+    padding: 14px 16px;
+    min-width: 130px;
+    cursor: pointer;
+    text-align: left;
+    box-shadow: 0 8px 20px rgba(47,47,47,0.12);
+    font-family: inherit;
+    transition: transform 0.15s, background 0.15s;
+  }
+  .prompt-chip:active { transform: scale(0.96); }
+  .prompt-chip[data-action="restore"] { border-color: var(--acento); }
+
+  .prompt-chip .icon {
+    font-size: 22px;
+    margin-bottom: 6px;
+    display: block;
+  }
+  .prompt-chip .name {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--negro-suave);
+    margin-bottom: 2px;
+  }
+  .prompt-chip .cost {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--azul-medio);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* ============ BOTTOM NAV ============ */
+  .bottomnav {
+    height: 72px;
+    background: var(--blanco-calido);
+    border-top: 1px solid rgba(47,47,47,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 8px;
+    padding-bottom: env(safe-area-inset-bottom);
+    z-index: 15;
+  }
+
+  .nav-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 8px 14px;
+    color: var(--azul-medio);
+    font-family: inherit;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    opacity: 0.5;
+    transition: opacity 0.2s, color 0.2s;
+  }
+  .nav-btn.active {
+    opacity: 1;
+    color: var(--negro-suave);
+  }
+  .nav-btn svg { width: 22px; height: 22px; }
+
+  /* ============ CARRETE ============ */
+  .carrete {
+    background: var(--blanco-calido);
+    padding: 24px 20px 100px;
+  }
+  .screen-header {
+    margin-bottom: 24px;
+  }
+  .screen-header .eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--azul-medio);
+    margin-bottom: 4px;
+  }
+  .screen-header h1 {
+    font-family: 'Archivo', sans-serif;
+    font-weight: 800;
+    font-size: 32px;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .screen-header h1 .accent {
+    font-family: 'Caveat', cursive;
+    font-weight: 700;
+    color: var(--acento);
+    font-size: 36px;
+    margin-left: 4px;
+  }
+
+  .filmstrip {
+    background: var(--negro-suave);
+    border-radius: 8px;
+    padding: 18px 12px;
+    position: relative;
+    margin-bottom: 24px;
+  }
+  /* perforaciones de carrete */
+  .filmstrip::before, .filmstrip::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 14px;
+    background-image: radial-gradient(circle, var(--blanco-calido) 0 4px, transparent 4px);
+    background-size: 16px 14px;
+    background-position: 4px center;
+  }
+  .filmstrip::before { top: 0; }
+  .filmstrip::after { bottom: 0; }
+
+  .filmstrip-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    padding: 12px 4px;
+  }
+
+  .photo-item {
+    aspect-ratio: 1 / 1.15;
+    background: var(--gris-fondo);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  }
+  .photo-item img {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  .photo-item .meta {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+    color: white;
+    padding: 14px 8px 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+  }
+
+  .empty-carrete {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--gris-medio);
+  }
+  .empty-carrete svg {
+    margin: 0 auto 16px;
+    opacity: 0.5;
+  }
+  .empty-carrete h3 {
+    font-family: 'Caveat', cursive;
+    font-size: 28px;
+    color: var(--azul-medio);
+    margin-bottom: 6px;
+    transform: rotate(-1deg);
+  }
+  .empty-carrete p {
+    font-size: 13px;
+    color: var(--gris-medio);
+  }
+
+  /* ============ CONSEJOS ============ */
+  .consejos {
+    background: var(--blanco-calido);
+    padding: 24px 20px 100px;
+  }
+  .tip-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 14px;
+    box-shadow: var(--sombra-suave);
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    position: relative;
+    border: 1px solid rgba(47,47,47,0.04);
+  }
+  .tip-num {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--azul-claro);
+    color: var(--negro-suave);
+    display: grid;
+    place-items: center;
+    font-family: 'Archivo', sans-serif;
+    font-weight: 800;
+    font-size: 14px;
+  }
+  .tip-content h4 {
+    font-family: 'Archivo', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  .tip-content p {
+    font-size: 13px;
+    color: var(--azul-medio);
+    line-height: 1.5;
+  }
+  .tip-card.accent .tip-num { background: var(--madera); }
+  .tip-card.accent2 .tip-num { background: var(--acento); color: white; }
+  .tip-card.accent3 .tip-num { background: var(--verde-musgo); color: white; }
+
+  /* ============ MODAL CONSEJOS ============ */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(47,47,47,0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+  .modal-overlay.show { display: flex; opacity: 1; }
+
+  .modal {
+    background: var(--blanco-calido);
+    max-width: 380px;
+    width: 100%;
+    border-radius: 16px;
+    padding: 24px 22px 20px;
+    position: relative;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.4);
+    transform: scale(0.95);
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .modal-overlay.show .modal { transform: scale(1); }
+
+  .modal::before {
+    /* cinta washi en la parte superior */
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-2deg);
+    width: 90px;
+    height: 22px;
+    background: var(--madera);
+    border-left: 2px dashed rgba(255,255,255,0.5);
+    border-right: 2px dashed rgba(255,255,255,0.5);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  }
+
+  .modal h2 {
+    font-family: 'Archivo', sans-serif;
+    font-weight: 800;
+    font-size: 20px;
+    letter-spacing: -0.02em;
+    margin-top: 8px;
+    margin-bottom: 4px;
+  }
+  .modal .sub {
+    font-family: 'Caveat', cursive;
+    font-size: 18px;
+    color: var(--azul-medio);
+    margin-bottom: 16px;
+  }
+
+  .mini-tips {
+    list-style: none;
+    margin-bottom: 18px;
+  }
+  .mini-tips li {
+    padding: 10px 0;
+    border-bottom: 1px dashed rgba(47,47,47,0.1);
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    font-size: 13.5px;
+    color: var(--negro-suave);
+    line-height: 1.4;
+  }
+  .mini-tips li:last-child { border-bottom: none; }
+  .mini-tips .ico {
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .checkbox-row input { display: none; }
+  .checkbox-row .box {
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--azul-medio);
+    border-radius: 4px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+  }
+  .checkbox-row input:checked + .box {
+    background: var(--negro-suave);
+    border-color: var(--negro-suave);
+  }
+  .checkbox-row input:checked + .box::after {
+    content: '✓';
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+  }
+  .checkbox-row span {
+    font-size: 12px;
+    color: var(--azul-medio);
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 10px;
+  }
+  .btn {
+    flex: 1;
+    padding: 13px 16px;
+    border-radius: 10px;
+    border: none;
+    font-family: 'Archivo', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary {
+    background: var(--negro-suave);
+    color: var(--blanco-calido);
+  }
+  .btn-secondary {
+    background: var(--gris-fondo);
+    color: var(--negro-suave);
+  }
+
+  /* ============ SOURCE PICKER ============ */
+  .sheet {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--blanco-calido);
+    border-radius: 24px 24px 0 0;
+    padding: 16px 20px 32px;
+    padding-bottom: calc(32px + env(safe-area-inset-bottom));
+    box-shadow: 0 -10px 30px rgba(0,0,0,0.2);
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+    z-index: 90;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .sheet.open { transform: translateY(0); }
+
+  .sheet-handle {
+    width: 36px;
+    height: 4px;
+    background: var(--gris-medio);
+    border-radius: 2px;
+    margin: 0 auto 18px;
+  }
+  .sheet h3 {
+    font-family: 'Archivo', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    margin-bottom: 14px;
+    text-align: center;
+    letter-spacing: -0.02em;
+  }
+  .sheet-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .sheet-option {
+    background: var(--gris-fondo);
+    border: 2px solid transparent;
+    border-radius: 14px;
+    padding: 22px 14px;
+    cursor: pointer;
+    text-align: center;
+    transition: transform 0.15s, border-color 0.15s, background 0.15s;
+    font-family: inherit;
+  }
+  .sheet-option:active {
+    transform: scale(0.96);
+    border-color: var(--azul-medio);
+    background: var(--blanco-calido);
+  }
+  .sheet-option svg { margin-bottom: 8px; }
+  .sheet-option .lbl {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--negro-suave);
+  }
+  .sheet-option .desc {
+    font-size: 11px;
+    color: var(--azul-medio);
+    margin-top: 2px;
+  }
+
+  .processing {
+    position: absolute;
+    inset: 0;
+    background: rgba(244,244,242,0.96);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    z-index: 50;
+    padding: 20px;
+  }
+  .processing.show { display: flex; }
+
+  /* dos rollos de carrete girando */
+  .reel-stage {
+    position: relative;
+    width: 240px;
+    height: 130px;
+  }
+  .reel {
+    position: absolute;
+    top: 0;
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at center, var(--negro-suave) 0 18px, transparent 18px),
+      radial-gradient(circle at center, transparent 0 22px, #1a1a1a 22px 28px, transparent 28px),
+      radial-gradient(circle at center, transparent 0 38px, #444 38px, var(--negro-suave) 100%);
+    box-shadow: inset 0 0 0 4px #111, 0 6px 16px rgba(0,0,0,0.4);
+    display: grid;
+    place-items: center;
+  }
+  .reel::before {
+    /* hueco central */
+    content: '';
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--blanco-calido);
+    z-index: 2;
+  }
+  .reel::after {
+    /* radios */
+    content: '';
+    position: absolute;
+    inset: 18px;
+    border-radius: 50%;
+    background:
+      conic-gradient(from 0deg, transparent 0 25deg, rgba(255,255,255,0.08) 25deg 30deg, transparent 30deg 115deg, rgba(255,255,255,0.08) 115deg 120deg, transparent 120deg 205deg, rgba(255,255,255,0.08) 205deg 210deg, transparent 210deg 295deg, rgba(255,255,255,0.08) 295deg 300deg, transparent 300deg);
+  }
+  .reel.left { left: 0; animation: spin 1.4s linear infinite; }
+  .reel.right { right: 0; animation: spin 1.4s linear infinite reverse; }
+
+  /* tira de carrete entre los dos rollos */
+  .film-strip {
+    position: absolute;
+    top: 50%;
+    left: 50px;
+    right: 50px;
+    height: 36px;
+    transform: translateY(-50%);
+    background: var(--negro-suave);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .film-strip::before, .film-strip::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 6px;
+    background-image: radial-gradient(circle, var(--blanco-calido) 0 1.5px, transparent 1.5px);
+    background-size: 8px 6px;
+  }
+  .film-strip::before { top: 2px; }
+  .film-strip::after { bottom: 2px; }
+
+  .film-strip .frame {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 22px;
+    background: var(--azul-claro);
+    border-radius: 1px;
+    animation: slide 1.4s linear infinite;
+  }
+  .film-strip .frame:nth-child(1) { background: var(--madera); animation-delay: 0s; }
+  .film-strip .frame:nth-child(2) { background: var(--azul-claro); animation-delay: -0.35s; }
+  .film-strip .frame:nth-child(3) { background: var(--acento); animation-delay: -0.7s; }
+  .film-strip .frame:nth-child(4) { background: var(--verde-musgo); animation-delay: -1.05s; }
+
+  @keyframes slide {
+    from { left: -32px; }
+    to { left: 100%; }
+  }
+
+  .processing-text {
+    text-align: center;
+  }
+  .processing-text .label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--azul-medio);
+    margin-bottom: 8px;
+  }
+  .processing-text h3 {
+    font-family: 'Caveat', cursive;
+    font-size: 30px;
+    color: var(--negro-suave);
+    line-height: 1.1;
+    transform: rotate(-1deg);
+  }
+  .processing-text .msg {
+    font-size: 13px;
+    color: var(--azul-medio);
+    margin-top: 8px;
+    min-height: 18px;
+  }
+
+  /* ============ RESULTADO ============ */
+  .result-actions {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    gap: 10px;
+    z-index: 25;
+    white-space: nowrap;
+  }
+  .result-actions.show { display: flex; }
+  .result-btn {
+    background: var(--negro-suave);
+    color: var(--blanco-calido);
+    border: none;
+    padding: 12px 22px;
+    border-radius: 100px;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: transform 0.15s;
+  }
+  .result-btn:active { transform: scale(0.96); }
+  .result-btn.secondary {
+    background: var(--blanco-calido);
+    color: var(--negro-suave);
+    border: 1px solid rgba(47,47,47,0.1);
+  }
+
+  /* TOAST */
+  .toast {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    background: var(--negro-suave);
+    color: var(--blanco-calido);
+    padding: 10px 18px;
+    border-radius: 100px;
+    font-size: 13px;
+    font-weight: 500;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 200;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Hide screen on out */
+  .screen:not(.active) { transform: translateY(8px); }
+
+  input[type="file"] { display: none; }
+
+  /* SCROLLBAR */
+  .screen::-webkit-scrollbar { width: 4px; }
+  .screen::-webkit-scrollbar-thumb { background: var(--gris-medio); border-radius: 4px; }
+
+  @media (max-width: 380px) {
+    .polaroid { padding: 14px 14px 50px; }
+    .fab { width: 64px; height: 64px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-logo"></div>
+      <div class="brand-name">Foto<span class="em">Memoria</span></div>
+    </div>
+    <div class="credits">
+      <span class="dot"></span>
+      <span id="credits-amount">€4.80</span>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- PANTALLA HOME -->
+    <section class="screen home active" id="screen-home">
+      <div class="home-eyebrow">
+        <span class="title">¿qué historia vas a rescatar hoy?</span>
+      </div>
+
+      <div class="polaroid" id="polaroid">
+        <div class="washi washi-tl"></div>
+        <div class="washi washi-tr"></div>
+        <div class="polaroid-window" id="polaroid-window">
+          <div class="empty-state" id="empty-state">
+            <svg width="48" height="48" viewBox="0 0 56 56" fill="none">
+              <rect x="6" y="12" width="44" height="36" rx="3" stroke="#7F98A3" stroke-width="2"/>
+              <circle cx="28" cy="30" r="9" stroke="#7F98A3" stroke-width="2"/>
+              <circle cx="28" cy="30" r="3.5" fill="#7F98A3"/>
+              <rect x="20" y="6" width="16" height="6" rx="2" stroke="#7F98A3" stroke-width="2"/>
+            </svg>
+          </div>
+          <button class="fab" id="fab-btn" onclick="onFabClick()">
+            <span id="fab-icon">+</span>
+          </button>
+        </div>
+        <div class="polaroid-caption" id="polaroid-caption">— mi memoria —</div>
+      </div>
+
+      <!-- Acciones de resultado -->
+      <div class="result-actions" id="result-actions">
+        <button class="result-btn secondary" onclick="discardResult()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
+          Descartar
+        </button>
+        <button class="result-btn" onclick="saveResult()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Guardar
+        </button>
+      </div>
+    </section>
+
+    <!-- PANTALLA CARRETE -->
+    <section class="screen carrete" id="screen-carrete">
+      <div class="screen-header">
+        <div class="eyebrow">Tu archivo</div>
+        <h1>Carrete <span class="accent">familiar</span></h1>
+      </div>
+      <div id="carrete-content"></div>
+    </section>
+
+    <!-- PANTALLA CONSEJOS -->
+    <section class="screen consejos" id="screen-consejos">
+      <div class="screen-header">
+        <div class="eyebrow">Antes de fotografiar</div>
+        <h1>Cómo<br>capturarla <span class="accent">bien</span></h1>
+      </div>
+
+      <div class="tip-card">
+        <div class="tip-num">1</div>
+        <div class="tip-content">
+          <h4>Busca una luz suave y uniforme</h4>
+          <p>Cerca de una ventana de día, evitando el sol directo. Las sombras duras crean reflejos sobre el papel y arruinan la captura.</p>
+        </div>
+      </div>
+
+      <div class="tip-card accent">
+        <div class="tip-num">2</div>
+        <div class="tip-content">
+          <h4>Apoya el móvil en algo firme</h4>
+          <p>Una mesa, un libro, un trípode improvisado. El movimiento es el peor enemigo: una foto movida no se puede restaurar.</p>
+        </div>
+      </div>
+
+      <div class="tip-card accent2">
+        <div class="tip-num">3</div>
+        <div class="tip-content">
+          <h4>Encuádrala recta y sin marco</h4>
+          <p>Acerca el móvil hasta que la foto antigua llene casi toda la pantalla. Quita el cristal o marco si los hay para evitar reflejos.</p>
+        </div>
+      </div>
+
+      <div class="tip-card accent3">
+        <div class="tip-num">4</div>
+        <div class="tip-content">
+          <h4>Pon la foto sobre fondo plano</h4>
+          <p>Una superficie de un solo color, mate. Sin estampados, sin texturas. La IA podrá identificar mejor los bordes reales.</p>
+        </div>
+      </div>
+
+      <div class="tip-card">
+        <div class="tip-num">5</div>
+        <div class="tip-content">
+          <h4>Limpia con cuidado antes</h4>
+          <p>Sopla el polvo. No frotes con tela. Si hay manchas o roturas, no las toques: la IA las restaura mejor sin que las hayas movido.</p>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- fin .content -->
+
+  <!-- Procesando overlay (sobre todo el content) -->
+  <div class="processing" id="processing">
+    <div class="reel-stage">
+      <div class="reel left"></div>
+      <div class="film-strip">
+        <div class="frame"></div>
+        <div class="frame"></div>
+        <div class="frame"></div>
+        <div class="frame"></div>
+      </div>
+      <div class="reel right"></div>
+    </div>
+    <div class="processing-text">
+      <div class="label">Restaurando</div>
+      <h3>Devolviéndole<br>la vida...</h3>
+      <div class="msg" id="processing-msg">Analizando la imagen</div>
+    </div>
+  </div>
+  <div class="prompt-menu" id="prompt-menu">
+    <button class="prompt-chip" data-action="definition" onclick="processImage('definition')">
+      <span class="icon">🔍</span>
+      <div class="name">Definición</div>
+      <div class="cost">€0.05</div>
+    </button>
+    <button class="prompt-chip" data-action="color" onclick="processImage('color')">
+      <span class="icon">💡</span>
+      <div class="name">Color y luz</div>
+      <div class="cost">€0.04</div>
+    </button>
+    <button class="prompt-chip" data-action="colorize" onclick="processImage('colorize')">
+      <span class="icon">🎨</span>
+      <div class="name">Colorizar</div>
+      <div class="cost">€0.07</div>
+    </button>
+    <button class="prompt-chip" data-action="restore" onclick="processImage('restore')">
+      <span class="icon">✨</span>
+      <div class="name">Restaurar todo</div>
+      <div class="cost">€0.18</div>
+    </button>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottomnav">
+    <button class="nav-btn active" data-screen="home" onclick="showScreen('home')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="4"/></svg>
+      Cámara
+    </button>
+    <button class="nav-btn" data-screen="carrete" onclick="showScreen('carrete')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M3 9h18M3 15h18M7 6v12M17 6v12"/></svg>
+      Carrete
+    </button>
+    <button class="nav-btn" data-screen="consejos" onclick="showScreen('consejos')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+      Consejos
+    </button>
+  </nav>
+</div>
+
+<!-- MODAL CONSEJOS RÁPIDOS (al subir foto) -->
+<div class="modal-overlay" id="tips-modal">
+  <div class="modal">
+    <h2>Antes de empezar</h2>
+    <div class="sub">unos consejos rápidos</div>
+    <ul class="mini-tips">
+      <li><span class="ico">💡</span><span>Busca un sitio bien iluminado, idealmente con luz natural indirecta</span></li>
+      <li><span class="ico">📐</span><span>Apoya el móvil en una mesa o libro para que no salga movida</span></li>
+      <li><span class="ico">🎯</span><span>Encuadra recta y rellenando todo el marco</span></li>
+      <li><span class="ico">🚫</span><span>Quita marcos y cristales: provocan reflejos</span></li>
+    </ul>
+    <label class="checkbox-row">
+      <input type="checkbox" id="dont-show-again">
+      <span class="box"></span>
+      <span>No volver a mostrar</span>
+    </label>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeTipsModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="acceptTips()">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<!-- SHEET SELECTOR DE FUENTE -->
+<div class="sheet" id="source-sheet">
+  <div class="sheet-handle"></div>
+  <h3>¿De dónde la cargamos?</h3>
+  <div class="sheet-options">
+    <button class="sheet-option" onclick="pickSource('camera')">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2F2F2F" stroke-width="1.8">
+        <rect x="3" y="6" width="18" height="14" rx="2"/>
+        <circle cx="12" cy="13" r="4"/>
+        <path d="M8 6l1.5-2h5L16 6"/>
+      </svg>
+      <div class="lbl">Hacer foto</div>
+      <div class="desc">Con la cámara</div>
+    </button>
+    <button class="sheet-option" onclick="pickSource('gallery')">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2F2F2F" stroke-width="1.8">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <circle cx="9" cy="9" r="2"/>
+        <path d="M21 15l-5-5L5 21"/>
+      </svg>
+      <div class="lbl">De la galería</div>
+      <div class="desc">Foto existente</div>
+    </button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">Hola</div>
+
+<!-- INPUTS OCULTOS -->
+<input type="file" id="file-camera" accept="image/*" capture="environment">
+<input type="file" id="file-gallery" accept="image/*">
+
+<script>
+// ============ ESTADO ============
+const state = {
+  currentImage: null,        // dataURL de imagen cargada
+  resultImage: null,         // dataURL del resultado
+  appliedAction: null,
+  carrete: JSON.parse(localStorage.getItem('fm_carrete') || '[]'),
+  credits: parseFloat(localStorage.getItem('fm_credits') || '4.80'),
+  hideTips: localStorage.getItem('fm_hideTips') === 'true',
+};
+
+// ============ NAVEGACIÓN ============
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.screen === name));
+
+  // Prompt menu solo visible en home
+  const promptMenu = document.getElementById('prompt-menu');
+  promptMenu.style.display = name === 'home' ? 'flex' : 'none';
+
+  if (name === 'carrete') renderCarrete();
+}
+
+// ============ FAB ============
+function onFabClick() {
+  if (state.hideTips) openSourceSheet();
+  else openTipsModal();
+}
+
+function updateFab() {
+  const fabIcon = document.getElementById('fab-icon');
+  const fabBtn = document.getElementById('fab-btn');
+  if (state.resultImage) {
+    fabIcon.innerHTML = '+';
+    fabBtn.classList.remove('has-photo');
+  } else if (state.currentImage) {
+    fabIcon.innerHTML = '+';
+    fabBtn.classList.remove('has-photo');
+  } else {
+    fabIcon.innerHTML = '+';
+    fabBtn.classList.remove('has-photo');
+  }
+}
+
+// ============ MODAL TIPS ============
+function openTipsModal() {
+  document.getElementById('tips-modal').classList.add('show');
+}
+function closeTipsModal() {
+  document.getElementById('tips-modal').classList.remove('show');
+}
+function acceptTips() {
+  if (document.getElementById('dont-show-again').checked) {
+    state.hideTips = true;
+    localStorage.setItem('fm_hideTips', 'true');
+  }
+  closeTipsModal();
+  setTimeout(openSourceSheet, 200);
+}
+
+// ============ SOURCE SHEET ============
+function openSourceSheet() {
+  document.getElementById('source-sheet').classList.add('open');
+}
+function closeSourceSheet() {
+  document.getElementById('source-sheet').classList.remove('open');
+}
+function pickSource(type) {
+  closeSourceSheet();
+  setTimeout(() => {
+    if (type === 'camera') document.getElementById('file-camera').click();
+    else document.getElementById('file-gallery').click();
+  }, 250);
+}
+
+// ============ FILE LOAD ============
+['file-camera', 'file-gallery'].forEach(id => {
+  document.getElementById(id).addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      state.currentImage = ev.target.result;
+      state.resultImage = null;
+      state.appliedAction = null;
+      renderPolaroid();
+      updateFab();
+      // abrir menú de prompts automáticamente
+      setTimeout(() => {
+        document.getElementById('prompt-menu').classList.add('open');
+      }, 350);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  });
+});
+
+function renderPolaroid() {
+  const win = document.getElementById('polaroid-window');
+  const empty = document.getElementById('empty-state');
+  const caption = document.getElementById('polaroid-caption');
+  const resultActions = document.getElementById('result-actions');
+
+  win.innerHTML = '';
+  if (state.resultImage) {
+    const img = document.createElement('img');
+    img.src = state.resultImage;
+    win.appendChild(img);
+    caption.textContent = '— restaurada —';
+    resultActions.classList.add('show');
+  } else if (state.currentImage) {
+    const img = document.createElement('img');
+    img.src = state.currentImage;
+    win.appendChild(img);
+    caption.textContent = '— elige una mejora —';
+    resultActions.classList.remove('show');
+  } else {
+    win.appendChild(empty);
+    caption.textContent = '— mi memoria —';
+    resultActions.classList.remove('show');
+  }
+}
+
+// ============ PROCESAR ============
+const ACTIONS = {
+  definition: { name: 'Mejorando definición', cost: 0.05, msgs: ['Analizando texturas','Reconstruyendo detalles','Afinando bordes'] },
+  color: { name: 'Equilibrando color y luz', cost: 0.04, msgs: ['Leyendo histograma','Recuperando sombras','Calibrando blancos'] },
+  colorize: { name: 'Devolviéndole el color', cost: 0.07, msgs: ['Identificando rostros','Eligiendo paleta histórica','Aplicando tonos naturales'] },
+  restore: { name: 'Restauración completa', cost: 0.18, msgs: ['Limpiando arañazos','Reconstruyendo zonas dañadas','Equilibrando exposición','Devolviendo el color','Afinando rostros'] },
+};
+
+async function processImage(action) {
+  if (!state.currentImage) {
+    toast('Primero carga una foto');
+    return;
+  }
+  const cfg = ACTIONS[action];
+  if (state.credits < cfg.cost) {
+    toast('No te quedan créditos suficientes');
+    return;
+  }
+
+  document.getElementById('prompt-menu').classList.remove('open');
+  const proc = document.getElementById('processing');
+  proc.classList.add('show');
+
+  // simular progreso
+  const msgEl = document.getElementById('processing-msg');
+  let i = 0;
+  msgEl.textContent = cfg.msgs[0];
+  const msgInterval = setInterval(() => {
+    i = (i + 1) % cfg.msgs.length;
+    msgEl.textContent = cfg.msgs[i];
+  }, 1100);
+
+  try {
+    const result = await callRestoreAPI(state.currentImage, action);
+
+    clearInterval(msgInterval);
+    state.resultImage = result;
+    state.appliedAction = action;
+    state.credits = Math.max(0, state.credits - cfg.cost);
+    saveCredits();
+
+    msgEl.textContent = '✓ listo';
+    await wait(400);
+    proc.classList.remove('show');
+    renderPolaroid();
+    updateFab();
+  } catch (err) {
+    clearInterval(msgInterval);
+    proc.classList.remove('show');
+
+    if (err.code === 'content_policy') {
+      showErrorModal(
+        'Foto no aceptada',
+        err.message || 'La IA rechazó la imagen por sus políticas de contenido.',
+        'Prueba con Definición o Color y luz, que aplican cambios más sutiles y suelen pasar sin problemas.'
+      );
+    } else if (err.code === 'no_backend') {
+      showErrorModal(
+        'Backend no conectado',
+        'El servidor de procesado no está configurado todavía.',
+        'Despliega el archivo <code>api/process-image.js</code> en Vercel y añade tu <code>OPENAI_API_KEY</code> en las variables de entorno.'
+      );
+    } else {
+      toast('Algo ha ido mal. Reintenta en un momento.');
+      console.error(err);
+    }
+  }
+}
+
+function wait(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+// ─── LLAMADA AL BACKEND ──────────────────────────────────────────────────────
+async function callRestoreAPI(dataUrl, action) {
+  // Mientras estés en local sin backend, activa el modo simulación:
+  // return simulateRestoration(dataUrl, action);
+
+  let res;
+  try {
+    res = await fetch('/api/process-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl, action }),
+      signal: AbortSignal.timeout(90_000), // 90 seg máximo
+    });
+  } catch (networkErr) {
+    // fetch falló del todo → probablemente no hay backend
+    const err = new Error('No backend');
+    err.code = 'no_backend';
+    throw err;
+  }
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    const err = new Error(data.message || 'Error del servidor');
+    err.code = data.error || 'server_error';
+    throw err;
+  }
+
+  return data.resultImage;
+}
+
+// ─── SIMULADOR LOCAL (para desarrollo sin backend) ───────────────────────────
+// Descomentar la línea "return simulateRestoration..." de arriba para usarlo.
+function simulateRestoration(dataUrl, action) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      switch (action) {
+        case 'definition': ctx.filter = 'contrast(1.15) saturate(1.05)'; break;
+        case 'color':      ctx.filter = 'brightness(1.08) contrast(1.12) saturate(1.1)'; break;
+        case 'colorize':   ctx.filter = 'sepia(0.15) saturate(1.4) hue-rotate(-10deg) contrast(1.05)'; break;
+        case 'restore':    ctx.filter = 'contrast(1.18) saturate(1.2) brightness(1.05)'; break;
+      }
+      ctx.drawImage(img, 0, 0);
+      setTimeout(() => resolve(canvas.toDataURL('image/jpeg', 0.92)),
+        action === 'restore' ? 4500 : 2800);
+    };
+    img.src = dataUrl;
+  });
+}
+
+// ============ RESULTADO ============
+function saveResult() {
+  if (!state.resultImage) return;
+  const item = {
+    id: Date.now(),
+    original: state.currentImage,
+    result: state.resultImage,
+    action: state.appliedAction,
+    date: new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }),
+  };
+  state.carrete.unshift(item);
+  // limitar tamaño localStorage: max 12 items
+  state.carrete = state.carrete.slice(0, 12);
+  try {
+    localStorage.setItem('fm_carrete', JSON.stringify(state.carrete));
+  } catch(e) {
+    // si no cabe, quitamos uno y reintentamos
+    state.carrete = state.carrete.slice(0, 6);
+    try { localStorage.setItem('fm_carrete', JSON.stringify(state.carrete)); } catch(e2){}
+  }
+  toast('Guardada en tu carrete');
+
+  // descargar también
+  const link = document.createElement('a');
+  link.href = state.resultImage;
+  link.download = `fotomemoria-${item.id}.jpg`;
+  link.click();
+
+  // limpiar
+  discardResult(true);
+}
+
+function discardResult(silent) {
+  state.currentImage = null;
+  state.resultImage = null;
+  state.appliedAction = null;
+  renderPolaroid();
+  updateFab();
+  if (!silent) toast('Foto descartada');
+}
+
+// ============ CARRETE ============
+function renderCarrete() {
+  const cont = document.getElementById('carrete-content');
+  if (state.carrete.length === 0) {
+    cont.innerHTML = `
+      <div class="empty-carrete">
+        <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+          <rect x="10" y="20" width="60" height="40" rx="3" stroke="#BFC3C6" stroke-width="2"/>
+          <circle cx="40" cy="40" r="12" stroke="#BFC3C6" stroke-width="2"/>
+          <circle cx="40" cy="40" r="5" fill="#BFC3C6"/>
+        </svg>
+        <h3>aún no has<br>guardado nada</h3>
+        <p>Restaura tu primera foto<br>y aparecerá aquí</p>
+      </div>
+    `;
+    return;
+  }
+
+  let html = '<div class="filmstrip"><div class="filmstrip-grid">';
+  state.carrete.forEach(item => {
+    const actionLabel = {
+      definition: 'DEF', color: 'COLOR', colorize: 'COLORIZADA', restore: 'RESTAURADA'
+    }[item.action] || '✓';
+    html += `
+      <div class="photo-item">
+        <img src="${item.result}" alt="">
+        <div class="meta">${actionLabel} · ${item.date}</div>
+      </div>
+    `;
+  });
+  html += '</div></div>';
+  cont.innerHTML = html;
+}
+
+// ============ CRÉDITOS ============
+function saveCredits() {
+  localStorage.setItem('fm_credits', state.credits.toFixed(2));
+  document.getElementById('credits-amount').textContent = '€' + state.credits.toFixed(2);
+}
+
+// ============ TOAST ============
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+document.getElementById('tips-modal').addEventListener('click', e => {
+  if (e.target.id === 'tips-modal') closeTipsModal();
+});
+document.addEventListener('click', e => {
+  const sheet = document.getElementById('source-sheet');
+  if (sheet.classList.contains('open') && !sheet.contains(e.target) && !e.target.closest('.fab')) {
+    closeSourceSheet();
+  }
+});
+
+// INIT
+saveCredits();
+updateFab();
+</script>
+
+<!-- MODAL ERROR -->
+<div class="modal-overlay" id="error-modal">
+  <div class="modal" style="border-top: 4px solid var(--acento);">
+    <h2 id="error-title" style="color:var(--acento); margin-top:4px;">Error</h2>
+    <p id="error-body" style="font-size:14px; color:var(--negro-suave); margin: 10px 0 6px; line-height:1.5;"></p>
+    <p id="error-hint" style="font-size:12.5px; color:var(--azul-medio); line-height:1.5; margin-bottom:18px;"></p>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="closeErrorModal()">Entendido</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function showErrorModal(title, body, hint) {
+  document.getElementById('error-title').textContent = title;
+  document.getElementById('error-body').innerHTML = body;
+  document.getElementById('error-hint').innerHTML = hint || '';
+  document.getElementById('error-modal').classList.add('show');
+}
+function closeErrorModal() {
+  document.getElementById('error-modal').classList.remove('show');
+}
+document.getElementById('error-modal').addEventListener('click', e => {
+  if (e.target.id === 'error-modal') closeErrorModal();
+});
+</script>
+
+</body>
+</html>
