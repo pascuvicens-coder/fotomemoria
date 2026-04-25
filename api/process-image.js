@@ -1,18 +1,7 @@
 /**
- * Restore — Vercel Function
+ * Restore — Vercel Node.js Function
  * POST /api/process-image
- *
- * Estrategia sin timeout:
- *   1. Este endpoint crea la predicción en Replicate/OpenAI y devuelve inmediatamente
- *   2. Para Replicate devuelve { predictionId, pollUrl } y el frontend hace el polling
- *   3. Para OpenAI espera el resultado (rápido, <15s)
- *
- * Variables de entorno:
- *   OPENAI_API_KEY    = sk-proj-...
- *   REPLICATE_API_KEY = r8_...
  */
-
-export const config = { maxDuration: 60 };
 
 const OPENAI_PROMPTS = {
   definition: `Professional archival digitization: enhance the sharpness and clarity of this historical photograph. Increase apparent resolution and recover fine details in textures, clothing and background. Reduce blur and grain noise while preserving the authentic vintage character. Non-commercial archival project.`,
@@ -20,72 +9,62 @@ const OPENAI_PROMPTS = {
   colorize: `Professional archival digitization: apply historically accurate colorization to this black and white historical photograph. Use natural period-appropriate colors from the mid 20th century. Preserve all original details and textures without alteration. Avoid oversaturation. Non-commercial archival project.`,
 };
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+export const config = {
+  maxDuration: 60,
+  api: {
+    bodyParser: {
+      sizeLimit: '5mb',
+    },
+  },
 };
 
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
-}
+export default async function handler(req, res) {
+  // CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-export default async function handler(req) {
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  let body;
-  try { body = await req.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
-
-  const { image, action } = body;
-  if (!image || !action) return json({ error: 'Missing image or action' }, 400);
+  const { image, action } = req.body || {};
+  if (!image || !action) return res.status(400).json({ error: 'Missing image or action' });
 
   try {
     if (action === 'restore') {
-      return await startReplicate(image);   // devuelve pollUrl al frontend
+      return await startReplicate(image, res);
     } else {
-      return await processWithOpenAI(image, action);  // espera resultado
+      return await processWithOpenAI(image, action, res);
     }
   } catch (err) {
     console.error('process-image error:', err);
-    return json({ error: 'processing_failed', message: err.message }, 500);
+    return res.status(500).json({ error: 'processing_failed', message: err.message });
   }
 }
 
-// ─── REPLICATE: crea predicción y devuelve pollUrl ────────────────────────────
-async function startReplicate(imageDataUrl) {
+async function startReplicate(imageDataUrl, res) {
   const apiKey = process.env.REPLICATE_API_KEY;
   if (!apiKey) throw new Error('REPLICATE_API_KEY not configured');
 
-  const res = await fetch('https://api.replicate.com/v1/predictions', {
+  const r = await fetch('https://api.replicate.com/v1/predictions', {
     method: 'POST',
     headers: { 'Authorization': `Token ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       version: 'f121d640bd286e1fdc67f9799164c1d5be36ff74576ee11c803ae5b665dd46aa',
-      input: {
-        image: imageDataUrl,
-        scale: 4,
-        face_enhance: true,
-      },
+      input: { image: imageDataUrl, scale: 4, face_enhance: true },
     }),
   });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Replicate create: ${res.status} ${err}`);
-  }
+  if (!r.ok) throw new Error(`Replicate create: ${r.status} ${await r.text()}`);
 
-  const prediction = await res.json();
-
-  // Devolvemos el pollUrl para que el frontend haga el polling directamente
-  return json({
+  const prediction = await r.json();
+  return res.status(200).json({
     type: 'polling',
     predictionId: prediction.id,
   });
 }
 
-// ─── OPENAI: espera resultado directamente ────────────────────────────────────
-async function processWithOpenAI(imageDataUrl, action) {
+async function processWithOpenAI(imageDataUrl, action, res) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
 
@@ -95,7 +74,10 @@ async function processWithOpenAI(imageDataUrl, action) {
   const match = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!match) throw new Error('Invalid image format');
 
-  const imageBlob = new Blob([base64ToBytes(match[2])], { type: match[1] });
+  const mimeType = match[1];
+  const buffer = Buffer.from(match[2], 'base64');
+  const blob = new Blob([buffer], { type: mimeType });
+
   const formData = new FormData();
   formData.append('model', 'gpt-image-1');
   formData.append('prompt', prompt);
@@ -103,35 +85,31 @@ async function processWithOpenAI(imageDataUrl, action) {
   formData.append('size', '1024x1024');
   formData.append('quality', 'medium');
   formData.append('response_format', 'b64_json');
-  formData.append('image', imageBlob, 'photo.jpg');
+  formData.append('image', blob, 'photo.jpg');
 
-  const res = await fetch('https://api.openai.com/v1/images/edits', {
+  const r = await fetch('https://api.openai.com/v1/images/edits', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}` },
     body: formData,
   });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    if (res.status === 400) {
-      return new Response(JSON.stringify({
+  if (!r.ok) {
+    const errText = await r.text();
+    if (r.status === 400) {
+      return res.status(422).json({
         error: 'content_policy',
         message: 'Imagen rechazada por políticas de contenido. Prueba con Restaurar.',
-      }), { status: 422, headers: { ...CORS, 'Content-Type': 'application/json' } });
+      });
     }
-    throw new Error(`OpenAI ${res.status}: ${errText}`);
+    throw new Error(`OpenAI ${r.status}: ${errText}`);
   }
 
-  const data = await res.json();
+  const data = await r.json();
   const b64 = data?.data?.[0]?.b64_json;
   if (!b64) throw new Error('No image in OpenAI response');
 
-  return json({ type: 'result', resultImage: `data:image/png;base64,${b64}` });
-}
-
-function base64ToBytes(b64) {
-  const bin = atob(b64);
-  const b = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
-  return b;
+  return res.status(200).json({
+    type: 'result',
+    resultImage: `data:image/png;base64,${b64}`,
+  });
 }
