@@ -1,12 +1,34 @@
 /**
  * Restore — Vercel Node.js Function
  * POST /api/process-image
+ * 
+ * Stack: 100% Replicate
+ *  - definition / color / colorize → flux-kontext-pro con prompt específico
+ *  - restore                       → flux-kontext-apps/restore-image (todo en uno)
+ *
+ * Variables de entorno:
+ *   REPLICATE_API_KEY = r8_...
  */
 
-const OPENAI_PROMPTS = {
-  definition: `Professional archival digitization: enhance the sharpness and clarity of this historical photograph. Increase apparent resolution and recover fine details in textures, clothing and background. Reduce blur and grain noise while preserving the authentic vintage character. Non-commercial archival project.`,
-  color: `Professional archival digitization: correct the exposure, contrast and tonal range of this historical photograph. Recover detail in highlights and shadows. Improve overall clarity and dynamic range while maintaining natural period-accurate tones. Non-commercial archival project.`,
-  colorize: `Professional archival digitization: apply historically accurate colorization to this black and white historical photograph. Use natural period-appropriate colors from the mid 20th century. Preserve all original details and textures without alteration. Avoid oversaturation. Non-commercial archival project.`,
+// IDENTITY_LOCK: directiva común que se prepende a todos los prompts.
+// El énfasis en preservar rasgos faciales es CRÍTICO — flux-kontext puede alterar caras
+// si el prompt no es muy explícito. Esto se repite intencionalmente.
+const IDENTITY_LOCK = "CRITICAL: Do NOT alter, regenerate, redraw, beautify, idealize or change in any way the faces, facial features, facial expressions, eyes, nose, mouth, ears, hair, age, ethnicity, body proportions, or identity of ANY person in the photograph. Every person must remain exactly identical to the original — same face, same age, same expression, same identity. Only modify lighting, color, texture clarity, damage and background as instructed. ";
+
+const PROMPTS = {
+  definition: IDENTITY_LOCK + "Task: Enhance the sharpness, clarity and detail of this old photograph. Recover fine textures in fabric and background. Preserve the authentic vintage character. The faces and people must look IDENTICAL to the original.",
+
+  color: IDENTITY_LOCK + "Task: Improve the color balance, contrast and lighting of this old photograph. Recover details in shadows and highlights. Make it look natural and well-exposed. The faces and people must look IDENTICAL to the original.",
+
+  colorize: IDENTITY_LOCK + "Task: Colorize this black and white photograph with realistic, historically accurate colors from the mid 20th century. Use natural, period-appropriate clothing colors and environmental hues. The faces and people must look IDENTICAL to the original — same exact features, only adding natural color.",
+};
+
+// Modelos en Replicate (versiones más recientes)
+const MODELS = {
+  // flux-kontext-pro: edición conversacional
+  edit: 'black-forest-labs/flux-kontext-pro',
+  // flux-kontext-apps/restore-image: restauración total automática
+  restore: 'flux-kontext-apps/restore-image',
 };
 
 export const config = {
@@ -19,7 +41,6 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -30,86 +51,75 @@ export default async function handler(req, res) {
   const { image, action } = req.body || {};
   if (!image || !action) return res.status(400).json({ error: 'Missing image or action' });
 
+  const apiKey = process.env.REPLICATE_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'REPLICATE_API_KEY not configured' });
+
   try {
+    let body;
+
     if (action === 'restore') {
-      return await startReplicate(image, res);
+      // flux-kontext-apps/restore-image: especialista en fotos antiguas.
+      // Solo acepta input_image y seed; preserva rostros por diseño del modelo.
+      body = {
+        input: {
+          input_image: image,
+        },
+      };
     } else {
-      return await processWithOpenAI(image, action, res);
+      // flux-kontext-pro con prompt específico
+      const prompt = PROMPTS[action];
+      if (!prompt) return res.status(400).json({ error: `Unknown action: ${action}` });
+      body = {
+        input: {
+          prompt,
+          input_image: image,
+          output_format: 'jpg',
+          safety_tolerance: 6, // máximo permisivo (1-6)
+        },
+      };
     }
+
+    // Usar el endpoint oficial del modelo (sin necesidad de version hash)
+    const modelPath = MODELS[action === 'restore' ? 'restore' : 'edit'];
+    const r = await fetch(`https://api.replicate.com/v1/models/${modelPath}/predictions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'wait=5', // espera hasta 5s por si termina rápido
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error('Replicate error:', r.status, errText);
+      return res.status(500).json({ error: 'replicate_error', message: errText.slice(0, 200) });
+    }
+
+    const prediction = await r.json();
+
+    // Si ya terminó (raro pero posible con Prefer: wait)
+    if (prediction.status === 'succeeded' && prediction.output) {
+      const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+      const imgRes = await fetch(outputUrl);
+      const buffer = Buffer.from(await imgRes.arrayBuffer());
+      const b64 = buffer.toString('base64');
+      const mime = imgRes.headers.get('content-type') || 'image/jpeg';
+      return res.status(200).json({
+        type: 'result',
+        resultImage: `data:${mime};base64,${b64}`,
+      });
+    }
+
+    // Lo normal: devolver predictionId para que el frontend haga polling
+    return res.status(200).json({
+      type: 'polling',
+      predictionId: prediction.id,
+    });
+
   } catch (err) {
     console.error('process-image error:', err);
     return res.status(500).json({ error: 'processing_failed', message: err.message });
   }
-}
-
-async function startReplicate(imageDataUrl, res) {
-  const apiKey = process.env.REPLICATE_API_KEY;
-  if (!apiKey) throw new Error('REPLICATE_API_KEY not configured');
-
-  const r = await fetch('https://api.replicate.com/v1/predictions', {
-    method: 'POST',
-    headers: { 'Authorization': `Token ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      version: 'f121d640bd286e1fdc67f9799164c1d5be36ff74576ee11c803ae5b665dd46aa',
-      input: { image: imageDataUrl, scale: 4, face_enhance: true },
-    }),
-  });
-
-  if (!r.ok) throw new Error(`Replicate create: ${r.status} ${await r.text()}`);
-
-  const prediction = await r.json();
-  return res.status(200).json({
-    type: 'polling',
-    predictionId: prediction.id,
-  });
-}
-
-async function processWithOpenAI(imageDataUrl, action, res) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
-
-  const prompt = OPENAI_PROMPTS[action];
-  if (!prompt) throw new Error(`Unknown action: ${action}`);
-
-  const match = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match) throw new Error('Invalid image format');
-
-  const mimeType = match[1];
-  const buffer = Buffer.from(match[2], 'base64');
-  const blob = new Blob([buffer], { type: mimeType });
-
-  const formData = new FormData();
-  formData.append('model', 'gpt-image-1');
-  formData.append('prompt', prompt);
-  formData.append('n', '1');
-  formData.append('size', '1024x1024');
-  formData.append('quality', 'medium');
-  formData.append('response_format', 'b64_json');
-  formData.append('image', blob, 'photo.jpg');
-
-  const r = await fetch('https://api.openai.com/v1/images/edits', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}` },
-    body: formData,
-  });
-
-  if (!r.ok) {
-    const errText = await r.text();
-    if (r.status === 400) {
-      return res.status(422).json({
-        error: 'content_policy',
-        message: 'Imagen rechazada por políticas de contenido. Prueba con Restaurar.',
-      });
-    }
-    throw new Error(`OpenAI ${r.status}: ${errText}`);
-  }
-
-  const data = await r.json();
-  const b64 = data?.data?.[0]?.b64_json;
-  if (!b64) throw new Error('No image in OpenAI response');
-
-  return res.status(200).json({
-    type: 'result',
-    resultImage: `data:image/png;base64,${b64}`,
-  });
 }
