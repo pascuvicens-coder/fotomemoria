@@ -57,7 +57,7 @@ async function processWithReplicate(imageDataUrl) {
     method: 'POST',
     headers: { 'Authorization': `Token ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      version: '9283608cc6b7be6b65a8e44983db012355f829a539bc1000094bce5ec3aa2b71',
+      version: '0fbacf7afc6c144e5be9767cff80f25aff23e52b0708f17e20f9879b2f21516c',
       input: { img: imageDataUrl, version: 'v1.4', scale: 2 },
     }),
   });
