@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#A9BCC4" />
-<title>FotoMemoria</title>
+<title>Restore</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600;700;800&family=Caveat:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -112,23 +112,7 @@
   }
   .brand-name .em { color: var(--azul-medio); }
 
-  .credits {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-family: 'DM Mono', monospace;
-    font-size: 12px;
-    color: var(--negro-suave);
-    background: var(--gris-fondo);
-    padding: 6px 12px;
-    border-radius: 100px;
-    font-weight: 500;
-  }
-  .credits .dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--verde-musgo);
-  }
+
 
   /* CONTENT AREA */
   .content {
@@ -328,13 +312,7 @@
     color: var(--negro-suave);
     margin-bottom: 2px;
   }
-  .prompt-chip .cost {
-    font-family: 'DM Mono', monospace;
-    font-size: 10px;
-    color: var(--azul-medio);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
+
 
   /* ============ BOTTOM NAV ============ */
   .bottomnav {
@@ -927,12 +905,9 @@
   <div class="topbar">
     <div class="brand">
       <div class="brand-logo"></div>
-      <div class="brand-name">Foto<span class="em">Memoria</span></div>
+      <div class="brand-name">Re<span class="em">store</span></div>
     </div>
-    <div class="credits">
-      <span class="dot"></span>
-      <span id="credits-amount">€4.80</span>
-    </div>
+
   </div>
 
   <!-- CONTENT -->
@@ -1057,22 +1032,18 @@
     <button class="prompt-chip" data-action="definition" onclick="processImage('definition')">
       <span class="icon">🔍</span>
       <div class="name">Definición</div>
-      <div class="cost">€0.05</div>
     </button>
     <button class="prompt-chip" data-action="color" onclick="processImage('color')">
       <span class="icon">💡</span>
       <div class="name">Color y luz</div>
-      <div class="cost">€0.04</div>
     </button>
     <button class="prompt-chip" data-action="colorize" onclick="processImage('colorize')">
       <span class="icon">🎨</span>
       <div class="name">Colorizar</div>
-      <div class="cost">€0.07</div>
     </button>
     <button class="prompt-chip" data-action="restore" onclick="processImage('restore')">
       <span class="icon">✨</span>
       <div class="name">Restaurar todo</div>
-      <div class="cost">€0.18</div>
     </button>
   </div>
 
@@ -1156,7 +1127,6 @@ const state = {
   resultImage: null,         // dataURL del resultado
   appliedAction: null,
   carrete: JSON.parse(localStorage.getItem('fm_carrete') || '[]'),
-  credits: parseFloat(localStorage.getItem('fm_credits') || '4.80'),
   hideTips: localStorage.getItem('fm_hideTips') === 'true',
 };
 
@@ -1275,10 +1245,10 @@ function renderPolaroid() {
 
 // ============ PROCESAR ============
 const ACTIONS = {
-  definition: { name: 'Mejorando definición', cost: 0.05, msgs: ['Analizando texturas','Reconstruyendo detalles','Afinando bordes'] },
-  color: { name: 'Equilibrando color y luz', cost: 0.04, msgs: ['Leyendo histograma','Recuperando sombras','Calibrando blancos'] },
-  colorize: { name: 'Devolviéndole el color', cost: 0.07, msgs: ['Identificando rostros','Eligiendo paleta histórica','Aplicando tonos naturales'] },
-  restore: { name: 'Restauración completa', cost: 0.18, msgs: ['Limpiando arañazos','Reconstruyendo zonas dañadas','Equilibrando exposición','Devolviendo el color','Afinando rostros'] },
+  definition: { name: 'Mejorando definición', msgs: ['Analizando texturas','Reconstruyendo detalles','Afinando bordes'] },
+  color: { name: 'Equilibrando color y luz', msgs: ['Leyendo histograma','Recuperando sombras','Calibrando blancos'] },
+  colorize: { name: 'Devolviéndole el color', msgs: ['Identificando rostros','Eligiendo paleta histórica','Aplicando tonos naturales'] },
+  restore: { name: 'Restauración completa', msgs: ['Limpiando arañazos','Reconstruyendo zonas dañadas','Equilibrando exposición','Devolviendo el color','Afinando rostros'] },
 };
 
 async function processImage(action) {
@@ -1287,10 +1257,6 @@ async function processImage(action) {
     return;
   }
   const cfg = ACTIONS[action];
-  if (state.credits < cfg.cost) {
-    toast('No te quedan créditos suficientes');
-    return;
-  }
 
   document.getElementById('prompt-menu').classList.remove('open');
   const proc = document.getElementById('processing');
@@ -1311,9 +1277,6 @@ async function processImage(action) {
     clearInterval(msgInterval);
     state.resultImage = result;
     state.appliedAction = action;
-    state.credits = Math.max(0, state.credits - cfg.cost);
-    saveCredits();
-
     msgEl.textContent = '✓ listo';
     await wait(400);
     proc.classList.remove('show');
@@ -1474,12 +1437,6 @@ function renderCarrete() {
   cont.innerHTML = html;
 }
 
-// ============ CRÉDITOS ============
-function saveCredits() {
-  localStorage.setItem('fm_credits', state.credits.toFixed(2));
-  document.getElementById('credits-amount').textContent = '€' + state.credits.toFixed(2);
-}
-
 // ============ TOAST ============
 let toastTimer;
 function toast(msg) {
@@ -1501,7 +1458,6 @@ document.addEventListener('click', e => {
 });
 
 // INIT
-saveCredits();
 updateFab();
 </script>
 

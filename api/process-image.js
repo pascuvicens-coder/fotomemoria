@@ -1,169 +1,134 @@
 /**
- * FotoMemoria — Vercel Edge Function
+ * Restore — Vercel Edge Function
  * POST /api/process-image
  *
- * Body: { image: "data:image/jpeg;base64,...", action: "definition"|"color"|"colorize"|"restore" }
- * Returns: { resultImage: "data:image/jpeg;base64,..." }
+ * Variables de entorno en Vercel:
+ *   OPENAI_API_KEY    = sk-proj-...
+ *   REPLICATE_API_KEY = r8_...
  *
- * Deploy: coloca este archivo en /api/process-image.js en la raíz de tu proyecto Vercel.
- * Variables de entorno en Vercel Dashboard → Settings → Environment Variables:
- *   OPENAI_API_KEY = sk-...
+ * Estrategia:
+ *   definition / color / colorize → OpenAI gpt-image-1
+ *   restore                       → Replicate GFPGAN (sin filtros, especializado en fotos antiguas)
  */
 
 export const config = { runtime: 'edge' };
 
-// ─── PROMPTS REALES ──────────────────────────────────────────────────────────
-const PROMPTS = {
-  definition: `Enhance the resolution and sharpness of this old photograph 4x. 
-    Clarify facial features, fabric textures and background details. 
-    Preserve grain authenticity — avoid over-smoothing. 
-    This should look like a better scan, not a painting. 
-    Do not alter, distort, or regenerate any faces, human features, or key objects. 
-    Family portrait, archival restoration, non-commercial use.`,
-
-  color: `Improve overall color balance, contrast, and dynamic range while maintaining a natural look. 
-    Correct white balance and lighting inconsistencies without altering skin tones, facial features, 
-    or object colors. Avoid oversaturation or unnatural color shifts. 
-    Recover blown-out areas and lift crushed blacks. Apply a subtle S-curve for natural contrast 
-    without losing the vintage atmosphere. 
-    Family portrait, archival restoration, non-commercial use.`,
-
-  colorize: `Apply realistic and context-aware colorization to this black and white photograph. 
-    Use natural, historically and visually plausible colors (mid 20th century palette). 
-    Preserve all original details, textures, and facial features without modification. 
-    Avoid exaggerated or artificial tones. Use historically accurate skin tones, 
-    period-appropriate clothing colors, and natural environmental hues. 
-    Family portrait, archival restoration, non-commercial use.`,
-
-  restore: `Apply a full restoration to this old photograph: 
-    1) Remove noise, dust, scratches, stains, and compression artifacts. 
-    2) Reconstruct damaged or missing areas subtly while preserving original textures. 
-    3) Enhance resolution and sharpness 4x. 
-    4) Rebalance exposure, shadows and highlights. 
-    5) Restore degraded facial features — recover eyes, skin texture and facial structure 
-       while strictly preserving the unique identity of each person. Do not idealize or alter age appearance. 
-    6) If black and white, colorize realistically with historically accurate tones. 
-    Preserve the authentic vintage character. 
-    Family portrait, archival restoration, non-commercial use.`,
+const OPENAI_PROMPTS = {
+  definition: `Professional archival digitization: enhance the sharpness and clarity of this historical photograph. Increase apparent resolution and recover fine details in textures, clothing and background. Reduce blur and grain noise while preserving the authentic vintage character. Non-commercial archival project.`,
+  color: `Professional archival digitization: correct the exposure, contrast and tonal range of this historical photograph. Recover detail in highlights and shadows. Improve overall clarity and dynamic range while maintaining natural period-accurate tones. Non-commercial archival project.`,
+  colorize: `Professional archival digitization: apply historically accurate colorization to this black and white historical photograph. Use natural period-appropriate colors from the mid 20th century. Preserve all original details and textures without alteration. Avoid oversaturation. Non-commercial archival project.`,
 };
 
-// ─── HANDLER ─────────────────────────────────────────────────────────────────
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
+}
+
 export default async function handler(req) {
-  // CORS — permite peticiones desde cualquier origen (ajusta en producción)
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
-
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   let body;
-  try {
-    body = await req.json();
-  } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
-      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
+  try { body = await req.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
 
   const { image, action } = body;
-
-  if (!image || !action) {
-    return new Response(JSON.stringify({ error: 'Missing image or action' }), {
-      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
-
-  const prompt = PROMPTS[action];
-  if (!prompt) {
-    return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
-      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'OPENAI_API_KEY not configured' }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
+  if (!image || !action) return json({ error: 'Missing image or action' }, 400);
 
   try {
-    // Convertir dataURL a Blob para el FormData
-    const base64Match = image.match(/^data:([^;]+);base64,(.+)$/);
-    if (!base64Match) throw new Error('Invalid image format');
-
-    const mimeType = base64Match[1];
-    const base64Data = base64Match[2];
-
-    // En Edge Runtime usamos fetch + FormData directamente
-    const binaryStr = atob(base64Data);
-    const bytes = new Uint8Array(binaryStr.length);
-    for (let i = 0; i < binaryStr.length; i++) {
-      bytes[i] = binaryStr.charCodeAt(i);
-    }
-    const imageBlob = new Blob([bytes], { type: mimeType });
-
-    const formData = new FormData();
-    formData.append('model', 'gpt-image-1');
-    formData.append('prompt', prompt);
-    formData.append('n', '1');
-    formData.append('size', '1024x1024');
-    formData.append('quality', 'medium');       // 'low' | 'medium' | 'high'
-    formData.append('response_format', 'b64_json');
-    formData.append('image', imageBlob, 'photo.jpg');
-
-    const openaiRes = await fetch('https://api.openai.com/v1/images/edits', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        // NO poner Content-Type manual con FormData — fetch lo pone solo con boundary
-      },
-      body: formData,
-    });
-
-    if (!openaiRes.ok) {
-      const errText = await openaiRes.text();
-      console.error('OpenAI error:', openaiRes.status, errText);
-
-      // Si OpenAI rechaza por política (ej. menores), devolvemos error descriptivo
-      if (openaiRes.status === 400) {
-        return new Response(JSON.stringify({
-          error: 'content_policy',
-          message: 'La imagen fue rechazada por las políticas de contenido. Prueba con otra foto o usa la acción de Definición o Color.'
-        }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-
-      throw new Error(`OpenAI ${openaiRes.status}: ${errText}`);
-    }
-
-    const openaiData = await openaiRes.json();
-    const b64Result = openaiData?.data?.[0]?.b64_json;
-
-    if (!b64Result) {
-      throw new Error('No image in OpenAI response');
-    }
-
-    return new Response(JSON.stringify({
-      resultImage: `data:image/png;base64,${b64Result}`
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-
+    return action === 'restore'
+      ? await processWithReplicate(image)
+      : await processWithOpenAI(image, action);
   } catch (err) {
     console.error('process-image error:', err);
-    return new Response(JSON.stringify({ error: 'processing_failed', message: err.message }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return json({ error: 'processing_failed', message: err.message }, 500);
   }
 }
+
+async function processWithReplicate(imageDataUrl) {
+  const apiKey = process.env.REPLICATE_API_KEY;
+  if (!apiKey) throw new Error('REPLICATE_API_KEY not configured');
+
+  const createRes = await fetch('https://api.replicate.com/v1/predictions', {
+    method: 'POST',
+    headers: { 'Authorization': `Token ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      version: '9283608cc6b7be6b65a8e44983db012355f829a539bc1000094bce5ec3aa2b71',
+      input: { img: imageDataUrl, version: 'v1.4', scale: 2 },
+    }),
+  });
+
+  if (!createRes.ok) throw new Error(`Replicate create: ${createRes.status} ${await createRes.text()}`);
+
+  const prediction = await createRes.json();
+  const pollUrl = prediction.urls?.get;
+  if (!pollUrl) throw new Error('No polling URL from Replicate');
+
+  for (let i = 0; i < 30; i++) {
+    await wait(2000);
+    const poll = await fetch(pollUrl, { headers: { 'Authorization': `Token ${apiKey}` } });
+    const result = await poll.json();
+
+    if (result.status === 'succeeded') {
+      const imgRes = await fetch(result.output);
+      const b64 = bufferToBase64(await imgRes.arrayBuffer());
+      const mime = imgRes.headers.get('content-type') || 'image/png';
+      return json({ resultImage: `data:${mime};base64,${b64}` });
+    }
+    if (result.status === 'failed' || result.status === 'canceled') {
+      throw new Error(`Replicate ${result.status}: ${result.error || ''}`);
+    }
+  }
+  throw new Error('Replicate timeout');
+}
+
+async function processWithOpenAI(imageDataUrl, action) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
+
+  const prompt = OPENAI_PROMPTS[action];
+  if (!prompt) throw new Error(`Unknown action: ${action}`);
+
+  const match = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) throw new Error('Invalid image format');
+
+  const imageBlob = new Blob([base64ToBytes(match[2])], { type: match[1] });
+  const formData = new FormData();
+  formData.append('model', 'gpt-image-1');
+  formData.append('prompt', prompt);
+  formData.append('n', '1');
+  formData.append('size', '1024x1024');
+  formData.append('quality', 'medium');
+  formData.append('response_format', 'b64_json');
+  formData.append('image', imageBlob, 'photo.jpg');
+
+  const res = await fetch('https://api.openai.com/v1/images/edits', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    if (res.status === 400) {
+      return new Response(JSON.stringify({
+        error: 'content_policy',
+        message: 'Imagen rechazada por políticas de contenido. Prueba con Restaurar todo.',
+      }), { status: 422, headers: { ...CORS, 'Content-Type': 'application/json' } });
+    }
+    throw new Error(`OpenAI ${res.status}: ${errText}`);
+  }
+
+  const data = await res.json();
+  const b64 = data?.data?.[0]?.b64_json;
+  if (!b64) throw new Error('No image in OpenAI response');
+  return json({ resultImage: `data:image/png;base64,${b64}` });
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+function base64ToBytes(b64) { const bin = atob(b64); const b = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i); return b; }
+function bufferToBase64(buf) { const b = new Uint8Array(buf); let s = ''; for (let i = 0; i < b.byteLength; i++) s += String.fromCharCode(b[i]); return btoa(s); }
