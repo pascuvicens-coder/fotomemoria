@@ -10,17 +10,62 @@
  *   REPLICATE_API_KEY = r8_...
  */
 
-// IDENTITY_LOCK: directiva común que se prepende a todos los prompts.
-// El énfasis en preservar rasgos faciales es CRÍTICO — flux-kontext puede alterar caras
-// si el prompt no es muy explícito. Esto se repite intencionalmente.
-const IDENTITY_LOCK = "CRITICAL: Do NOT alter, regenerate, redraw, beautify, idealize or change in any way the faces, facial features, facial expressions, eyes, nose, mouth, ears, hair, age, ethnicity, body proportions, or identity of ANY person in the photograph. Every person must remain exactly identical to the original — same face, same age, same expression, same identity. Only modify lighting, color, texture clarity, damage and background as instructed. ";
+// ============================================================================
+// PROMPTS DE FLUX-KONTEXT — afinados quirúrgicamente
+// Cada acción hace UNA SOLA cosa, sin invadir el territorio de las otras.
+// La preservación de identidad es férrea en los tres.
+// ============================================================================
+
+// Bloqueo de identidad — se prepende a TODOS los prompts.
+const IDENTITY_LOCK = (
+  "ABSOLUTE RULE — IDENTITY PRESERVATION: " +
+  "Do NOT alter, regenerate, redraw, beautify, idealize, smooth, or change in any way " +
+  "the faces, facial features, facial expressions, eyes, nose, mouth, ears, hair style, " +
+  "hair line, age, wrinkles, skin marks, ethnicity, body shape, body proportions, or identity " +
+  "of ANY person in the photograph. Every person must remain pixel-faithful to the original — " +
+  "same exact face, same age, same expression, same identity. " +
+  "Do NOT change the composition, framing, pose, or any object's shape. " +
+  "Do NOT regenerate or 'enhance' faces. Treat all human features as untouchable. "
+);
+
+// Bloqueo de scope — refuerza que la acción NO debe invadir otras tareas.
+const SCOPE_LOCK = (
+  "STAY IN YOUR LANE — Do ONLY the task described below. " +
+  "Do NOT do anything else. If the task is not listed below, do not do it. "
+);
 
 const PROMPTS = {
-  definition: IDENTITY_LOCK + "Task: Enhance the sharpness, clarity and detail of this old photograph. Recover fine textures in fabric and background. Preserve the authentic vintage character. The faces and people must look IDENTICAL to the original.",
+  // ─── DEFINICIÓN — solo nitidez, NUNCA color ────────────────────────────────
+  definition: IDENTITY_LOCK + SCOPE_LOCK +
+    "TASK: Enhance the perceived resolution and sharpness of this photograph. " +
+    "Recover fine details and textures in fabric, hair, skin pores, eyes, background and surfaces. " +
+    "Reduce blur and softness. Make grain crisp and authentic. " +
+    "STRICT FORBIDDEN: do NOT add color, do NOT colorize, do NOT shift hues, do NOT change saturation. " +
+    "If the photograph is black-and-white or sepia, the output MUST remain black-and-white or sepia respectively. " +
+    "Do NOT change exposure, do NOT change contrast, do NOT alter lighting, do NOT remove damage or scratches. " +
+    "ONLY improve sharpness and recover detail. Treat this as a 'better scan, not a painting'.",
 
-  color: IDENTITY_LOCK + "Task: Improve the color balance, contrast and lighting of this old photograph. Recover details in shadows and highlights. Make it look natural and well-exposed. The faces and people must look IDENTICAL to the original.",
+  // ─── COLOREA — solo color, NUNCA nitidez ni reparación ─────────────────────
+  colorize: IDENTITY_LOCK + SCOPE_LOCK +
+    "TASK: Apply realistic, historically accurate colorization to this black and white or sepia photograph. " +
+    "Use natural, period-appropriate colors (early-to-mid 20th century palette by default, unless clothing or context indicate otherwise). " +
+    "Skin tones must be natural and match the apparent ethnicity of each person without altering their features. " +
+    "Clothing colors must look authentic to the era. Environmental hues (sky, foliage, walls, wood, metal) must be plausible. " +
+    "STRICT FORBIDDEN: do NOT increase resolution, do NOT sharpen, do NOT change definition, do NOT increase contrast beyond what colorization requires, " +
+    "do NOT remove scratches, dust, stains, tears or any physical damage. " +
+    "Do NOT oversaturate. Do NOT use vibrant or modern colors. The mood must remain vintage. " +
+    "ONLY add natural color where there is none.",
 
-  colorize: IDENTITY_LOCK + "Task: Colorize this black and white photograph with realistic, historically accurate colors from the mid 20th century. Use natural, period-appropriate clothing colors and environmental hues. The faces and people must look IDENTICAL to the original — same exact features, only adding natural color.",
+  // ─── REPARA — solo daño físico, NUNCA color ni nitidez ────────────────────
+  repair: IDENTITY_LOCK + SCOPE_LOCK +
+    "TASK: Repair physical damage in this photograph. " +
+    "Specifically: remove scratches, dust spots, stains, tears, creases, fold marks, fingerprints, water marks, mold spots, " +
+    "missing corners, torn edges, and emulsion damage. Reconstruct each damaged area to seamlessly match the surrounding " +
+    "content, textures, grain and tone of the original. " +
+    "STRICT FORBIDDEN: do NOT add color, do NOT colorize, do NOT shift hues, do NOT change saturation. " +
+    "If the photograph is black-and-white or sepia, the output MUST remain black-and-white or sepia respectively. " +
+    "Do NOT increase resolution, do NOT sharpen, do NOT change exposure, do NOT alter contrast or lighting. " +
+    "ONLY repair physical damage. The repaired areas must be invisible — they should look like the damage was never there.",
 };
 
 // Modelos en Replicate (versiones más recientes)

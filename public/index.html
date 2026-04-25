@@ -910,42 +910,48 @@
     </div>
   </div>
   <div class="prompt-menu" id="prompt-menu">
-    <!-- DEFINICIÓN — Lupa -->
+    <!-- DEFINICIÓN — Lupa minimalista -->
     <button class="prompt-chip" data-action="definition" onclick="processImage('definition')">
       <svg class="icon" viewBox="0 0 64 64" fill="none">
-        <circle cx="26" cy="26" r="14" stroke="#2F2F2F" stroke-width="3" fill="none"/>
-        <path d="M19 19a10 10 0 0 1 9-7" stroke="#7F98A3" stroke-width="2" stroke-linecap="round" fill="none"/>
-        <rect x="36" y="36" width="6" height="14" rx="3" transform="rotate(-45 39 43)" stroke="#2F2F2F" stroke-width="3" fill="none"/>
+        <!-- cristal -->
+        <circle cx="26" cy="26" r="14" stroke="#2F2F2F" stroke-width="3.5" fill="none"/>
+        <!-- reflejo interior azul -->
+        <path d="M18 26a8 8 0 0 1 8-8" stroke="#7F98A3" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+        <!-- mango -->
+        <line x1="36.6" y1="36.6" x2="50" y2="50" stroke="#2F2F2F" stroke-width="4.5" stroke-linecap="round"/>
       </svg>
       <div class="name">Definición</div>
     </button>
 
-    <!-- COLOREA — Paleta de pintor -->
+    <!-- COLOREA — 3 círculos RGB en triángulo -->
     <button class="prompt-chip" data-action="colorize" onclick="processImage('colorize')">
       <svg class="icon" viewBox="0 0 64 64" fill="none">
-        <path d="M32 8C18 8 8 18 8 30c0 8 6 14 14 14 3 0 5-2 5-5 0-2-1-3-1-5 0-3 2-5 5-5h7c10 0 18-7 18-15 0-7-9-12-24-12z"
-              stroke="#2F2F2F" stroke-width="3" stroke-linejoin="round" fill="none"/>
-        <circle cx="20" cy="22" r="2.2" fill="#7F98A3"/>
-        <circle cx="28" cy="16" r="2.2" fill="#7F98A3"/>
-        <circle cx="38" cy="14" r="2.2" fill="#7F98A3"/>
-        <circle cx="46" cy="20" r="2.2" fill="#7F98A3"/>
-        <circle cx="42" cy="28" r="2.2" fill="#7F98A3"/>
-        <circle cx="20" cy="36" r="2.2" stroke="#2F2F2F" stroke-width="2" fill="none"/>
+        <!-- rojo (arriba) -->
+        <circle cx="32" cy="20" r="11" fill="#E24B4A" stroke="#2F2F2F" stroke-width="2.5"/>
+        <!-- verde (abajo izquierda) -->
+        <circle cx="20" cy="40" r="11" fill="#3B6D11" stroke="#2F2F2F" stroke-width="2.5"/>
+        <!-- azul (abajo derecha) -->
+        <circle cx="44" cy="40" r="11" fill="#185FA5" stroke="#2F2F2F" stroke-width="2.5"/>
       </svg>
       <div class="name">Colorea</div>
     </button>
 
-    <!-- REPARA — Lápiz -->
+    <!-- REPARA — Tirita -->
     <button class="prompt-chip" data-action="repair" onclick="processImage('repair')">
       <svg class="icon" viewBox="0 0 64 64" fill="none">
-        <!-- cuerpo del lápiz inclinado -->
-        <path d="M14 50l8-2 30-30-6-6-30 30-2 8z" stroke="#2F2F2F" stroke-width="3" stroke-linejoin="round" fill="none"/>
-        <!-- punta -->
-        <path d="M14 50l4-1 5-5-3-3-5 5-1 4z" fill="#7F98A3" stroke="#2F2F2F" stroke-width="2.5" stroke-linejoin="round"/>
-        <!-- línea central de la madera -->
-        <path d="M22 42l24-24" stroke="#7F98A3" stroke-width="1.6" stroke-linecap="round"/>
-        <!-- borrador / extremo -->
-        <path d="M46 18l6-6" stroke="#2F2F2F" stroke-width="3" stroke-linecap="round"/>
+        <!-- cuerpo de la tirita en diagonal -->
+        <g transform="rotate(-30 32 32)">
+          <!-- forma exterior -->
+          <rect x="10" y="24" width="44" height="16" rx="8"
+                stroke="#2F2F2F" stroke-width="3.5" fill="none"/>
+          <!-- línea divisoria entre las dos partes -->
+          <line x1="32" y1="24" x2="32" y2="40" stroke="#2F2F2F" stroke-width="2"/>
+          <!-- agujeritos / textura azul -->
+          <circle cx="20" cy="32" r="1.6" fill="#7F98A3"/>
+          <circle cx="26" cy="32" r="1.6" fill="#7F98A3"/>
+          <circle cx="38" cy="32" r="1.6" fill="#7F98A3"/>
+          <circle cx="44" cy="32" r="1.6" fill="#7F98A3"/>
+        </g>
       </svg>
       <div class="name">Repara</div>
     </button>
