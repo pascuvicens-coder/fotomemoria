@@ -1719,34 +1719,48 @@ function discardResult(silent) {
   resetForNextRestore();
 }
 
+// Variable para cancelar timeouts pendientes si se llama de nuevo durante una animación
+let _resetTimeouts = [];
+
 function resetForNextRestore() {
-  // pequeña animación de salida → limpiar estado → mostrar polaroid vacía
+  // Cancelar cualquier reset en curso para evitar estados intermedios
+  _resetTimeouts.forEach(t => clearTimeout(t));
+  _resetTimeouts = [];
+
   const polaroid = document.getElementById('polaroid');
-  if (polaroid) {
-    polaroid.style.transition = 'opacity 0.3s, transform 0.3s';
-    polaroid.style.opacity = '0';
-    polaroid.style.transform = 'rotate(-0.5deg) scale(0.96)';
+  const polaroidWindow = document.getElementById('polaroid-window');
+
+  // Animación simple y segura: fade-out solo del contenido interior.
+  // No tocamos el marco exterior ni su transform/opacity para evitar
+  // que estilos inline interfieran con el aspect-ratio dinámico.
+  if (polaroidWindow) {
+    polaroidWindow.style.transition = 'opacity 0.25s ease';
+    polaroidWindow.style.opacity = '0';
   }
 
-  setTimeout(() => {
+  _resetTimeouts.push(setTimeout(() => {
+    // Limpiar estado
     state.currentImage = null;
     state.resultImage = null;
     state.appliedAction = null;
+
+    // Devolver la polaroid al ratio cuadrado
+    resetPolaroidAspectRatio();
+
+    // Renderizar polaroid vacía
     renderPolaroid();
     updateFab();
 
-    // animación de entrada
-    if (polaroid) {
-      polaroid.style.opacity = '1';
-      polaroid.style.transform = 'rotate(-0.5deg) scale(1)';
-      // limpiar estilos inline después de la animación
-      setTimeout(() => {
-        polaroid.style.transition = '';
-        polaroid.style.opacity = '';
-        polaroid.style.transform = '';
-      }, 350);
+    // Fade-in del contenido
+    if (polaroidWindow) {
+      polaroidWindow.style.opacity = '1';
+
+      _resetTimeouts.push(setTimeout(() => {
+        polaroidWindow.style.removeProperty('transition');
+        polaroidWindow.style.removeProperty('opacity');
+      }, 300));
     }
-  }, 320);
+  }, 270));
 }
 
 
