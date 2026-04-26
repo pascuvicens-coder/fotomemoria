@@ -14,6 +14,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600;700;800&family=Caveat:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- OpenCV.js — se carga asíncrono, se usa para detección de esquinas y rectificación de perspectiva en el recorte -->
+<script>
+  window.openCvReady = false;
+  window.openCvReadyCallbacks = [];
+  var Module = {
+    onRuntimeInitialized() {
+      window.openCvReady = true;
+      window.openCvReadyCallbacks.forEach(cb => cb());
+      window.openCvReadyCallbacks = [];
+    }
+  };
+</script>
+<script async src="https://docs.opencv.org/4.8.0/opencv.js"></script>
 <style>
   :root {
     --azul-claro: #A9BCC4;
@@ -790,6 +803,178 @@
     .polaroid { padding: 14px 14px 50px; }
     .fab { width: 64px; height: 64px; }
   }
+
+  /* ============ OVERLAY DE RECORTE TIPO CAMSCANNER ============ */
+  .crop-overlay {
+    position: fixed;
+    inset: 0;
+    background: #1a1a1a;
+    z-index: 200;
+    display: none;
+    flex-direction: column;
+    overscroll-behavior: contain;
+  }
+  .crop-overlay.show { display: flex; }
+
+  .crop-header {
+    flex-shrink: 0;
+    height: 56px;
+    background: #1a1a1a;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    color: var(--blanco-calido);
+    padding-top: env(safe-area-inset-top);
+    height: calc(56px + env(safe-area-inset-top));
+  }
+  .crop-header .title {
+    font-family: 'Archivo', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+  }
+  .crop-header .sub {
+    font-family: 'Caveat', cursive;
+    font-size: 16px;
+    color: var(--azul-claro);
+    margin-left: 8px;
+    opacity: 0.85;
+  }
+  .crop-icon-btn {
+    background: none;
+    border: none;
+    color: var(--blanco-calido);
+    cursor: pointer;
+    padding: 8px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    transition: background 0.15s;
+  }
+  .crop-icon-btn:active { background: rgba(255,255,255,0.1); }
+
+  .crop-stage {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background:
+      repeating-conic-gradient(rgba(255,255,255,0.02) 0% 25%, transparent 0% 50%) 50% / 24px 24px,
+      #1a1a1a;
+    touch-action: none;
+  }
+  .crop-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .crop-handle {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    margin-left: -14px;
+    margin-top: -14px;
+    border-radius: 50%;
+    background: var(--blanco-calido);
+    border: 3px solid var(--azul-medio);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    cursor: grab;
+    touch-action: none;
+    z-index: 3;
+  }
+  .crop-handle::after {
+    content: '';
+    position: absolute;
+    inset: -16px;
+    /* área de toque ampliada para dedos */
+  }
+  .crop-handle:active { cursor: grabbing; transform: scale(1.15); }
+
+  .crop-edge {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    margin-left: -12px;
+    margin-top: -12px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.5);
+    border: 2px solid var(--azul-medio);
+    cursor: grab;
+    touch-action: none;
+    z-index: 2;
+    transition: opacity 0.15s;
+  }
+  .crop-edge::after {
+    content: '';
+    position: absolute;
+    inset: -14px;
+  }
+  .crop-edge:active { cursor: grabbing; }
+
+  .crop-footer {
+    flex-shrink: 0;
+    background: #1a1a1a;
+    padding: 14px 18px;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    display: flex;
+    gap: 10px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .crop-btn {
+    flex: 1;
+    padding: 14px 16px;
+    border-radius: 100px;
+    border: none;
+    font-family: 'Archivo', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    transition: transform 0.15s, opacity 0.15s;
+  }
+  .crop-btn:active { transform: scale(0.97); }
+  .crop-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .crop-btn-cancel {
+    background: transparent;
+    color: var(--blanco-calido);
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .crop-btn-reset {
+    background: rgba(255,255,255,0.08);
+    color: var(--blanco-calido);
+    flex: 0.6;
+  }
+  .crop-btn-confirm {
+    background: var(--blanco-calido);
+    color: var(--negro-suave);
+  }
+
+  .crop-loading {
+    position: absolute;
+    inset: 0;
+    background: rgba(26,26,26,0.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 14px;
+    color: var(--blanco-calido);
+    font-family: 'Caveat', cursive;
+    font-size: 22px;
+    z-index: 10;
+  }
+  .crop-loading.show { display: flex; }
+  .crop-loading .spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(255,255,255,0.2);
+    border-top-color: var(--blanco-calido);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -1099,15 +1284,10 @@ function pickSource(type) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      state.currentImage = ev.target.result;
-      state.resultImage = null;
-      state.appliedAction = null;
-      renderPolaroid();
-      updateFab();
-      // abrir menú de prompts automáticamente
-      setTimeout(() => {
-        document.getElementById('prompt-menu').classList.add('open');
-      }, 350);
+      // En lugar de cargar directamente, abrir el overlay de recorte.
+      // El usuario ajusta las cuatro esquinas y al confirmar, la imagen
+      // recortada y rectificada se guarda en state.currentImage.
+      openCropOverlay(ev.target.result);
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -1471,6 +1651,553 @@ function closeErrorModal() {
 }
 document.getElementById('error-modal').addEventListener('click', e => {
   if (e.target.id === 'error-modal') closeErrorModal();
+});
+</script>
+
+<!-- ============ OVERLAY DE RECORTE TIPO CAMSCANNER ============ -->
+<div class="crop-overlay" id="crop-overlay">
+  <div class="crop-header">
+    <button class="crop-icon-btn" onclick="cancelCrop()" aria-label="Cancelar">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    </button>
+    <div>
+      <span class="title">Recorta tu foto</span>
+      <span class="sub">ajusta las esquinas</span>
+    </div>
+    <div style="width:36px;"></div>
+  </div>
+
+  <div class="crop-stage" id="crop-stage">
+    <canvas class="crop-canvas" id="crop-canvas"></canvas>
+    <!-- Los handles se generan en JS -->
+    <div class="crop-loading" id="crop-loading">
+      <div class="spinner"></div>
+      <div>Detectando bordes...</div>
+    </div>
+  </div>
+
+  <div class="crop-footer">
+    <button class="crop-btn crop-btn-cancel" onclick="cancelCrop()">Cancelar</button>
+    <button class="crop-btn crop-btn-reset" onclick="resetCropCorners()" title="Restablecer esquinas">↻</button>
+    <button class="crop-btn crop-btn-confirm" id="crop-confirm-btn" onclick="confirmCrop()">Recortar</button>
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// RECORTE TIPO CAMSCANNER
+// Detección automática de las cuatro esquinas del rectángulo de la foto
+// antigua dentro de la captura, con corrección de perspectiva (homografía).
+// El usuario puede ajustar las esquinas a mano si la detección no acierta.
+// ============================================================================
+
+const cropState = {
+  sourceImage: null,      // Image element con la foto original
+  sourceWidth: 0,
+  sourceHeight: 0,
+  corners: [],            // [{x, y}] en coordenadas de la imagen original
+  displayScale: 1,        // factor entre imagen original y canvas mostrado
+  displayOffsetX: 0,
+  displayOffsetY: 0,
+  draggingIndex: -1,
+};
+
+// Esperar a OpenCV antes de detectar
+function whenOpenCvReady(cb) {
+  if (window.openCvReady) cb();
+  else window.openCvReadyCallbacks.push(cb);
+}
+
+// Punto de entrada: llamar tras cargar una imagen del usuario
+async function openCropOverlay(dataUrl) {
+  const overlay = document.getElementById('crop-overlay');
+  const loading = document.getElementById('crop-loading');
+
+  overlay.classList.add('show');
+  loading.classList.add('show');
+
+  // Cargar la imagen
+  const img = new Image();
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+
+  cropState.sourceImage = img;
+  cropState.sourceWidth = img.naturalWidth;
+  cropState.sourceHeight = img.naturalHeight;
+
+  // Pintar la imagen ya, mientras OpenCV detecta
+  drawCropCanvas();
+
+  // Detectar esquinas (necesita OpenCV)
+  whenOpenCvReady(() => {
+    try {
+      const detected = detectCorners(img);
+      cropState.corners = detected || defaultCorners();
+    } catch (err) {
+      console.error('Detección falló:', err);
+      cropState.corners = defaultCorners();
+    }
+    loading.classList.remove('show');
+    drawCropCanvas();
+    renderHandles();
+  });
+}
+
+function cancelCrop() {
+  const overlay = document.getElementById('crop-overlay');
+  overlay.classList.remove('show');
+  cropState.sourceImage = null;
+  cropState.corners = [];
+  // Limpiar handles
+  document.querySelectorAll('.crop-handle, .crop-edge').forEach(el => el.remove());
+  // Si no había imagen previa, dejar todo limpio
+  if (!state.currentImage) {
+    state.currentImage = null;
+    renderPolaroid();
+    updateFab();
+  }
+}
+
+function resetCropCorners() {
+  // Reintentar detección automática
+  const loading = document.getElementById('crop-loading');
+  loading.classList.add('show');
+  setTimeout(() => {
+    whenOpenCvReady(() => {
+      try {
+        const detected = detectCorners(cropState.sourceImage);
+        cropState.corners = detected || defaultCorners();
+      } catch (err) {
+        cropState.corners = defaultCorners();
+      }
+      loading.classList.remove('show');
+      drawCropCanvas();
+      renderHandles();
+    });
+  }, 50);
+}
+
+// Esquinas por defecto: 95% de la imagen, ligeramente metidas hacia dentro
+function defaultCorners() {
+  const w = cropState.sourceWidth;
+  const h = cropState.sourceHeight;
+  const m = 0.025; // margen del 2.5%
+  return [
+    { x: w * m,       y: h * m },        // top-left
+    { x: w * (1 - m), y: h * m },        // top-right
+    { x: w * (1 - m), y: h * (1 - m) },  // bottom-right
+    { x: w * m,       y: h * (1 - m) },  // bottom-left
+  ];
+}
+
+// Dibujar la imagen y el cuadrilátero en el canvas
+function drawCropCanvas() {
+  const canvas = document.getElementById('crop-canvas');
+  const stage = document.getElementById('crop-stage');
+  const ctx = canvas.getContext('2d');
+
+  const stageW = stage.clientWidth;
+  const stageH = stage.clientHeight;
+
+  // Ajustar canvas al tamaño del stage (con DPR para nitidez)
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = stageW * dpr;
+  canvas.height = stageH * dpr;
+  canvas.style.width = stageW + 'px';
+  canvas.style.height = stageH + 'px';
+  ctx.scale(dpr, dpr);
+
+  // Calcular escala "fit" para que la imagen completa quepa en el stage
+  const imgW = cropState.sourceWidth;
+  const imgH = cropState.sourceHeight;
+  const scaleFit = Math.min(stageW / imgW, stageH / imgH) * 0.92; // 8% margen
+  const drawW = imgW * scaleFit;
+  const drawH = imgH * scaleFit;
+  const offsetX = (stageW - drawW) / 2;
+  const offsetY = (stageH - drawH) / 2;
+
+  cropState.displayScale = scaleFit;
+  cropState.displayOffsetX = offsetX;
+  cropState.displayOffsetY = offsetY;
+
+  ctx.clearRect(0, 0, stageW, stageH);
+  ctx.drawImage(cropState.sourceImage, offsetX, offsetY, drawW, drawH);
+
+  // Dibujar el cuadrilátero
+  if (cropState.corners.length === 4) {
+    const ptsDisplay = cropState.corners.map(p => ({
+      x: p.x * scaleFit + offsetX,
+      y: p.y * scaleFit + offsetY,
+    }));
+
+    // Sombra exterior (oscurecer fuera del cuadrilátero)
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.beginPath();
+    ctx.rect(0, 0, stageW, stageH);
+    ctx.moveTo(ptsDisplay[0].x, ptsDisplay[0].y);
+    for (let i = ptsDisplay.length - 1; i >= 0; i--) {
+      ctx.lineTo(ptsDisplay[i].x, ptsDisplay[i].y);
+    }
+    ctx.closePath();
+    ctx.fill('evenodd');
+    ctx.restore();
+
+    // Líneas del cuadrilátero
+    ctx.strokeStyle = '#A9BCC4';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(ptsDisplay[0].x, ptsDisplay[0].y);
+    for (let i = 1; i < 4; i++) {
+      ctx.lineTo(ptsDisplay[i].x, ptsDisplay[i].y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
+}
+
+// Crear los 4 handles de esquina + 4 handles intermedios (puntos medios de cada lado)
+function renderHandles() {
+  const stage = document.getElementById('crop-stage');
+  // Limpiar handles previos
+  stage.querySelectorAll('.crop-handle, .crop-edge').forEach(el => el.remove());
+
+  if (cropState.corners.length !== 4) return;
+
+  // 4 esquinas
+  cropState.corners.forEach((corner, i) => {
+    const handle = document.createElement('div');
+    handle.className = 'crop-handle';
+    handle.dataset.index = i;
+    handle.dataset.type = 'corner';
+    positionHandle(handle, corner);
+    attachDragListeners(handle);
+    stage.appendChild(handle);
+  });
+
+  // 4 puntos medios de cada lado (al moverlos, mueven la pareja de esquinas)
+  for (let i = 0; i < 4; i++) {
+    const a = cropState.corners[i];
+    const b = cropState.corners[(i + 1) % 4];
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const edge = document.createElement('div');
+    edge.className = 'crop-edge';
+    edge.dataset.indexA = i;
+    edge.dataset.indexB = (i + 1) % 4;
+    edge.dataset.type = 'edge';
+    positionHandle(edge, mid);
+    attachDragListeners(edge);
+    stage.appendChild(edge);
+  }
+}
+
+function positionHandle(el, point) {
+  const x = point.x * cropState.displayScale + cropState.displayOffsetX;
+  const y = point.y * cropState.displayScale + cropState.displayOffsetY;
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+}
+
+function attachDragListeners(el) {
+  let isDragging = false;
+  let startX = 0, startY = 0;
+  let startCorners = null;
+
+  const onStart = (e) => {
+    e.preventDefault();
+    isDragging = true;
+    const t = e.touches ? e.touches[0] : e;
+    startX = t.clientX;
+    startY = t.clientY;
+    startCorners = cropState.corners.map(c => ({...c}));
+  };
+
+  const onMove = (e) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    const t = e.touches ? e.touches[0] : e;
+    const dx = (t.clientX - startX) / cropState.displayScale;
+    const dy = (t.clientY - startY) / cropState.displayScale;
+
+    if (el.dataset.type === 'corner') {
+      const i = parseInt(el.dataset.index);
+      const newPoint = {
+        x: clamp(startCorners[i].x + dx, 0, cropState.sourceWidth),
+        y: clamp(startCorners[i].y + dy, 0, cropState.sourceHeight),
+      };
+      cropState.corners[i] = newPoint;
+    } else if (el.dataset.type === 'edge') {
+      // Mover ambos extremos de ese lado paralelamente
+      const a = parseInt(el.dataset.indexA);
+      const b = parseInt(el.dataset.indexB);
+      cropState.corners[a] = {
+        x: clamp(startCorners[a].x + dx, 0, cropState.sourceWidth),
+        y: clamp(startCorners[a].y + dy, 0, cropState.sourceHeight),
+      };
+      cropState.corners[b] = {
+        x: clamp(startCorners[b].x + dx, 0, cropState.sourceWidth),
+        y: clamp(startCorners[b].y + dy, 0, cropState.sourceHeight),
+      };
+    }
+
+    drawCropCanvas();
+    repositionAllHandles();
+  };
+
+  const onEnd = () => { isDragging = false; };
+
+  el.addEventListener('mousedown', onStart);
+  el.addEventListener('touchstart', onStart, { passive: false });
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('mouseup', onEnd);
+  document.addEventListener('touchend', onEnd);
+}
+
+function repositionAllHandles() {
+  const handles = document.querySelectorAll('.crop-handle');
+  handles.forEach((h, idx) => {
+    const i = parseInt(h.dataset.index);
+    positionHandle(h, cropState.corners[i]);
+  });
+  const edges = document.querySelectorAll('.crop-edge');
+  edges.forEach((e) => {
+    const a = parseInt(e.dataset.indexA);
+    const b = parseInt(e.dataset.indexB);
+    const mid = {
+      x: (cropState.corners[a].x + cropState.corners[b].x) / 2,
+      y: (cropState.corners[a].y + cropState.corners[b].y) / 2,
+    };
+    positionHandle(e, mid);
+  });
+}
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+// =====================================================
+// DETECCIÓN AUTOMÁTICA DE ESQUINAS CON OPENCV.JS
+// =====================================================
+function detectCorners(imgEl) {
+  const cv = window.cv;
+  if (!cv || !cv.imread) return null;
+
+  let src = null, gray = null, blur = null, edges = null;
+  let contours = null, hierarchy = null;
+
+  try {
+    src = cv.imread(imgEl);
+
+    // Reescalar para acelerar la detección — trabajamos a max 800px lado largo
+    const maxSide = 800;
+    const longest = Math.max(src.cols, src.rows);
+    const scale = longest > maxSide ? maxSide / longest : 1;
+    if (scale < 1) {
+      const resized = new cv.Mat();
+      cv.resize(src, resized, new cv.Size(src.cols * scale, src.rows * scale));
+      src.delete();
+      src = resized;
+    }
+
+    gray = new cv.Mat();
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+    blur = new cv.Mat();
+    cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+
+    edges = new cv.Mat();
+    cv.Canny(blur, edges, 50, 150);
+
+    // Dilatar bordes para conectar líneas discontinuas
+    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+    cv.dilate(edges, edges, kernel);
+    kernel.delete();
+
+    contours = new cv.MatVector();
+    hierarchy = new cv.Mat();
+    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+    // Buscar el contorno cuadrilátero más grande
+    let bestContour = null;
+    let bestArea = 0;
+    const minArea = (src.cols * src.rows) * 0.15; // al menos 15% del área total
+
+    for (let i = 0; i < contours.size(); i++) {
+      const cnt = contours.get(i);
+      const area = cv.contourArea(cnt);
+      if (area < minArea) { cnt.delete(); continue; }
+
+      const peri = cv.arcLength(cnt, true);
+      const approx = new cv.Mat();
+      cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+
+      if (approx.rows === 4 && cv.isContourConvex(approx) && area > bestArea) {
+        if (bestContour) bestContour.delete();
+        bestContour = approx;
+        bestArea = area;
+      } else {
+        approx.delete();
+      }
+      cnt.delete();
+    }
+
+    if (!bestContour) {
+      cleanupMats(src, gray, blur, edges, contours, hierarchy);
+      return null;
+    }
+
+    // Extraer las 4 esquinas y reescalar de vuelta a tamaño original
+    const inverseScale = 1 / scale;
+    const points = [];
+    for (let i = 0; i < 4; i++) {
+      const pt = bestContour.intPtr(i, 0);
+      points.push({
+        x: pt[0] * inverseScale,
+        y: pt[1] * inverseScale,
+      });
+    }
+    bestContour.delete();
+
+    cleanupMats(src, gray, blur, edges, contours, hierarchy);
+
+    // Ordenar las esquinas: TL, TR, BR, BL
+    return orderCorners(points);
+
+  } catch (err) {
+    console.error('Error en detección OpenCV:', err);
+    cleanupMats(src, gray, blur, edges, contours, hierarchy);
+    return null;
+  }
+}
+
+function cleanupMats(...mats) {
+  mats.forEach(m => { try { if (m && !m.isDeleted) m.delete(); } catch(e){} });
+}
+
+// Ordenar 4 puntos en sentido horario empezando por top-left
+function orderCorners(pts) {
+  const sums = pts.map(p => p.x + p.y);
+  const diffs = pts.map(p => p.y - p.x);
+  return [
+    pts[indexOfMin(sums)],   // TL = menor suma
+    pts[indexOfMin(diffs)],  // TR = menor diferencia
+    pts[indexOfMax(sums)],   // BR = mayor suma
+    pts[indexOfMax(diffs)],  // BL = mayor diferencia
+  ];
+}
+function indexOfMin(arr) { return arr.indexOf(Math.min(...arr)); }
+function indexOfMax(arr) { return arr.indexOf(Math.max(...arr)); }
+
+// =====================================================
+// CONFIRMAR RECORTE: aplicar warp perspective y devolver el resultado
+// =====================================================
+async function confirmCrop() {
+  const btn = document.getElementById('crop-confirm-btn');
+  btn.disabled = true;
+  btn.textContent = 'Procesando...';
+
+  try {
+    const cropped = await new Promise((resolve, reject) => {
+      whenOpenCvReady(() => {
+        try {
+          const result = warpPerspectiveCrop(cropState.sourceImage, cropState.corners);
+          resolve(result);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    // Guardar como currentImage y cerrar overlay
+    state.currentImage = cropped;
+    state.resultImage = null;
+    state.appliedAction = null;
+
+    document.getElementById('crop-overlay').classList.remove('show');
+    document.querySelectorAll('.crop-handle, .crop-edge').forEach(el => el.remove());
+    cropState.sourceImage = null;
+    cropState.corners = [];
+
+    renderPolaroid();
+    updateFab();
+
+    // Abrir el menú de prompts
+    setTimeout(() => {
+      document.getElementById('prompt-menu').classList.add('open');
+    }, 300);
+
+  } catch (err) {
+    console.error('Error en confirmCrop:', err);
+    toast('Error al recortar. Reintenta.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Recortar';
+  }
+}
+
+function warpPerspectiveCrop(imgEl, corners) {
+  const cv = window.cv;
+  const ordered = orderCorners(corners.map(c => ({...c})));
+  const [tl, tr, br, bl] = ordered;
+
+  // Calcular dimensiones de salida basadas en distancias entre esquinas
+  const widthTop = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+  const widthBottom = Math.hypot(br.x - bl.x, br.y - bl.y);
+  const heightLeft = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+  const heightRight = Math.hypot(br.x - tr.x, br.y - tr.y);
+
+  let outW = Math.round(Math.max(widthTop, widthBottom));
+  let outH = Math.round(Math.max(heightLeft, heightRight));
+
+  // Cap a 1500px lado largo para no generar imágenes monstruosas
+  const MAX_OUT = 1500;
+  const longestOut = Math.max(outW, outH);
+  if (longestOut > MAX_OUT) {
+    const s = MAX_OUT / longestOut;
+    outW = Math.round(outW * s);
+    outH = Math.round(outH * s);
+  }
+
+  const src = cv.imread(imgEl);
+  const dst = new cv.Mat();
+  const dsize = new cv.Size(outW, outH);
+
+  const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+    tl.x, tl.y,
+    tr.x, tr.y,
+    br.x, br.y,
+    bl.x, bl.y,
+  ]);
+  const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+    0, 0,
+    outW, 0,
+    outW, outH,
+    0, outH,
+  ]);
+
+  const M = cv.getPerspectiveTransform(srcTri, dstTri);
+  cv.warpPerspective(src, dst, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+  // Convertir a dataURL vía canvas
+  const canvas = document.createElement('canvas');
+  cv.imshow(canvas, dst);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+  src.delete(); dst.delete(); srcTri.delete(); dstTri.delete(); M.delete();
+  return dataUrl;
+}
+
+// =====================================================
+// REDIMENSIONADO: si la ventana cambia de tamaño, redibujar
+// =====================================================
+window.addEventListener('resize', () => {
+  if (document.getElementById('crop-overlay').classList.contains('show')
+      && cropState.sourceImage) {
+    drawCropCanvas();
+    renderHandles();
+  }
 });
 </script>
 
