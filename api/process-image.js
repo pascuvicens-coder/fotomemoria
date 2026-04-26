@@ -2,29 +2,21 @@
  * Restore — Vercel Node.js Function
  * POST /api/process-image
  *
- * Motores por acción (cada uno usa el modelo más adecuado):
- *
- *  definition  → nightmareai/real-esrgan
- *                Modelo de super-resolución puro. No "entiende" la imagen,
- *                solo aumenta píxeles. Nunca coloriza ni altera tonos.
- *
- *  colorize    → black-forest-labs/flux-kontext-pro
- *                Editor de imagen guiado por texto. Aquí sí brilla: es
- *                capaz de colorizar con contexto histórico preservando caras.
- *
- *  repair      → flux-kontext-apps/restore-image
- *                Modelo especializado en fotos antiguas (daño físico).
- *                Entrenado expresamente para manchas, arañazos y roturas.
+ * Stack: 100% Replicate (una sola REPLICATE_API_KEY)
+ *  - definition → topazlabs/image-upscale       (definición + nitidez profesional)
+ *  - repair     → microsoft/bringing-old-photos-back-to-life (arañazos, roturas, daño físico)
+ *  - colorize   → black-forest-labs/flux-kontext-pro (B/N → color natural)
  *
  * Variables de entorno:
  *   REPLICATE_API_KEY = r8_...
  */
 
 // ============================================================================
-// PROMPTS — solo para colorize (flux-kontext-pro acepta texto)
+// PROMPT DE COLORIZACIÓN — solo lo usa Flux Kontext (los otros dos modelos no
+// aceptan prompt). La preservación de identidad es férrea.
 // ============================================================================
 
-const IDENTITY_LOCK =
+const IDENTITY_LOCK = (
   "ABSOLUTE RULE — IDENTITY PRESERVATION: " +
   "Do NOT alter, regenerate, redraw, beautify, idealize, smooth, or change in any way " +
   "the faces, facial features, facial expressions, eyes, nose, mouth, ears, hair style, " +
@@ -32,40 +24,92 @@ const IDENTITY_LOCK =
   "of ANY person in the photograph. Every person must remain pixel-faithful to the original — " +
   "same exact face, same age, same expression, same identity. " +
   "Do NOT change the composition, framing, pose, or any object's shape. " +
-  "Do NOT regenerate or enhance faces. Treat all human features as untouchable. ";
+  "Do NOT regenerate or 'enhance' faces. Treat all human features as untouchable. "
+);
 
-const SCOPE_LOCK =
-  "STAY IN YOUR LANE — Do ONLY the task described below. Do NOT do anything else. ";
+const SCOPE_LOCK = (
+  "STAY IN YOUR LANE — Do ONLY the task described below. " +
+  "Do NOT do anything else. If the task is not listed below, do not do it. "
+);
 
-const PROMPTS = {
-  colorize:
-    IDENTITY_LOCK + SCOPE_LOCK +
-    "TASK: Apply realistic, historically accurate colorization to this black and white or sepia photograph. " +
-    "Use natural, period-appropriate colors (early-to-mid 20th century palette unless context indicates otherwise). " +
-    "Skin tones: natural, warm, matching apparent ethnicity — never orange or washed out. " +
-    "Clothing: muted, era-authentic colors (navy, olive, burgundy, grey, beige). " +
-    "Backgrounds: natural hues — stone walls warm grey, wood brown, sky pale blue, foliage muted green. " +
-    "Keep the vintage mood: slightly desaturated, never vivid or modern. " +
-    "FORBIDDEN: do NOT change resolution, sharpness, or contrast beyond what the colorization itself requires. " +
-    "Do NOT remove scratches, tears, or physical damage. ONLY add color.",
+const COLORIZE_PROMPT = IDENTITY_LOCK + SCOPE_LOCK +
+  "TASK: Apply realistic, historically accurate colorization to this black and white or sepia photograph. " +
+  "Use natural, period-appropriate colors (early-to-mid 20th century palette by default, unless clothing or context indicate otherwise). " +
+  "Skin tones must be natural and match the apparent ethnicity of each person without altering their features. " +
+  "Clothing colors must look authentic to the era. Environmental hues (sky, foliage, walls, wood, metal) must be plausible. " +
+  "STRICT FORBIDDEN: do NOT increase resolution, do NOT sharpen, do NOT change definition, do NOT increase contrast beyond what colorization requires, " +
+  "do NOT remove scratches, dust, stains, tears or any physical damage. " +
+  "Do NOT oversaturate. Do NOT use vibrant or modern colors. The mood must remain vintage. " +
+  "ONLY add natural color where there is none.";
+
+// ============================================================================
+// CONFIGURACIÓN POR ACCIÓN
+// ============================================================================
+
+const ACTIONS = {
+  // ─── DEFINICIÓN — Topaz Image Upscale (modelo "official", precio fijo) ───
+  // Usa High Fidelity V2 para preservar máximo detalle original sin alucinar.
+  // upscale_factor: 2 → suficiente para mejorar nitidez sin agrandar 4x (más caro).
+  // face_enhancement: true → crítico para fotos antiguas con caras.
+  // creativity 0 + strength 0.8 → look natural, sin "plástico".
+  definition: {
+    model: 'topazlabs/image-upscale',
+    buildInput: (image) => ({
+      image,
+      enhance_model: 'High Fidelity V2',
+      upscale_factor: '2x',
+      output_format: 'jpg',
+      subject_detection: 'All',
+      face_enhancement: true,
+      face_enhancement_creativity: 0,
+      face_enhancement_strength: 0.8,
+    }),
+  },
+
+  // ─── REPARA — Bringing Old Photos Back to Life ──────────────────────────
+  // Modelo de Microsoft especializado en daño físico. No acepta prompt.
+  // HR: true → soporte para alta resolución (mejor calidad, más lento).
+  // with_scratch: true → activa el detector de arañazos. Lo dejamos siempre on
+  // porque las fotos antiguas casi siempre tienen alguno.
+  // ⚠️ Puede tardar hasta 4 minutos en T4 GPU. Polling obligatorio.
+  repair: {
+    model: 'microsoft/bringing-old-photos-back-to-life',
+    buildInput: (image) => ({
+      image,
+      HR: true,
+      with_scratch: true,
+    }),
+  },
+
+  // ─── COLOREA — FLUX Kontext Pro (lo que ya teníamos) ────────────────────
+  // safety_tolerance 6 = máximo permisivo (1-6).
+  colorize: {
+    model: 'black-forest-labs/flux-kontext-pro',
+    buildInput: (image) => ({
+      prompt: COLORIZE_PROMPT,
+      input_image: image,
+      output_format: 'jpg',
+      safety_tolerance: 6,
+    }),
+  },
 };
 
 // ============================================================================
-// MODELOS
-// ============================================================================
-
-const REALESRGAN_MODEL  = 'nightmareai/real-esrgan';
-const FLUX_KONTEXT_MODEL = 'black-forest-labs/flux-kontext-pro';
-const RESTORE_MODEL     = 'flux-kontext-apps/restore-image';
-
+// VERCEL FUNCTION CONFIG
 // ============================================================================
 
 export const config = {
   maxDuration: 60,
   api: {
-    bodyParser: { sizeLimit: '5mb' },
+    bodyParser: {
+      sizeLimit: '5mb',
+    },
   },
 };
+
+// ============================================================================
+// HANDLER
+// ============================================================================
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -81,68 +125,41 @@ export default async function handler(req, res) {
   const apiKey = process.env.REPLICATE_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'REPLICATE_API_KEY not configured' });
 
+  const cfg = ACTIONS[action];
+  if (!cfg) return res.status(400).json({ error: `Unknown action: ${action}` });
+
   try {
-    let modelPath;
-    let body;
+    const body = { input: cfg.buildInput(image) };
 
-    if (action === 'definition') {
-      // Real-ESRGAN: super-resolución pura, sin texto, sin edición creativa.
-      // face_enhance activa GFPGAN internamente para proteger rostros.
-      modelPath = REALESRGAN_MODEL;
-      body = {
-        input: {
-          image,
-          scale: 4,
-          face_enhance: true,
-        },
-      };
-
-    } else if (action === 'colorize') {
-      // flux-kontext-pro: edición guiada por texto → ideal para colorizar.
-      modelPath = FLUX_KONTEXT_MODEL;
-      body = {
-        input: {
-          prompt: PROMPTS.colorize,
-          input_image: image,
-          output_format: 'jpg',
-          safety_tolerance: 6,
-        },
-      };
-
-    } else if (action === 'repair') {
-      // restore-image: especialista en daño físico de fotografías antiguas.
-      // Sin prompt — el modelo sabe lo que tiene que hacer con la imagen sola.
-      modelPath = RESTORE_MODEL;
-      body = {
-        input: {
-          input_image: image,
-        },
-      };
-
-    } else {
-      return res.status(400).json({ error: `Unknown action: ${action}` });
-    }
-
-    const r = await fetch(`https://api.replicate.com/v1/models/${modelPath}/predictions`, {
+    // Endpoint oficial del modelo (sin necesidad de version hash)
+    const r = await fetch(`https://api.replicate.com/v1/models/${cfg.model}/predictions`, {
       method: 'POST',
       headers: {
-        Authorization: `Token ${apiKey}`,
+        'Authorization': `Token ${apiKey}`,
         'Content-Type': 'application/json',
-        Prefer: 'wait=5',
+        // Para Topaz y Flux puede terminar en pocos segundos.
+        // Para Bringing Old Photos esto se ignorará (tarda mucho más).
+        'Prefer': 'wait=5',
       },
       body: JSON.stringify(body),
     });
 
     if (!r.ok) {
       const errText = await r.text();
-      console.error('Replicate error:', r.status, errText);
-      return res.status(500).json({ error: 'replicate_error', message: errText.slice(0, 200) });
+      console.error(`Replicate error [${action}]:`, r.status, errText);
+      return res.status(500).json({
+        error: 'replicate_error',
+        message: errText.slice(0, 200),
+      });
     }
 
     const prediction = await r.json();
 
+    // Si ya terminó (raro pero posible con Prefer: wait — Topaz a veces lo hace)
     if (prediction.status === 'succeeded' && prediction.output) {
-      const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+      const outputUrl = Array.isArray(prediction.output)
+        ? prediction.output[0]
+        : prediction.output;
       const imgRes = await fetch(outputUrl);
       const buffer = Buffer.from(await imgRes.arrayBuffer());
       const b64 = buffer.toString('base64');
@@ -153,13 +170,17 @@ export default async function handler(req, res) {
       });
     }
 
+    // Lo normal: devolver predictionId para que el frontend haga polling
     return res.status(200).json({
       type: 'polling',
       predictionId: prediction.id,
     });
 
   } catch (err) {
-    console.error('process-image error:', err);
-    return res.status(500).json({ error: 'processing_failed', message: err.message });
+    console.error(`process-image error [${action}]:`, err);
+    return res.status(500).json({
+      error: 'processing_failed',
+      message: err.message,
+    });
   }
 }
