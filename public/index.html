@@ -1775,6 +1775,18 @@ updateFab();
 </script>
 
 <!-- MODAL ERROR -->
+<!-- MODAL CONFIRMACIÓN GENÉRICO (descartar resultado al pulsar Inicio, etc.) -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal">
+    <h2 id="confirm-title" style="margin-top:4px;">¿Descartar?</h2>
+    <p id="confirm-body" style="font-size:14px; color:var(--negro-suave); margin: 10px 0 18px; line-height:1.5;"></p>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeConfirmModal(false)">Cancelar</button>
+      <button class="btn btn-primary" onclick="closeConfirmModal(true)">Sí, descartar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="error-modal">
   <div class="modal" style="border-top: 4px solid var(--acento);">
     <h2 id="error-title" style="color:var(--acento); margin-top:4px;">Error</h2>
@@ -1787,6 +1799,70 @@ updateFab();
 </div>
 
 <script>
+// ============ MODAL DE CONFIRMACIÓN GENÉRICO ============
+let confirmResolver = null;
+
+function showConfirmModal(title, body) {
+  return new Promise((resolve) => {
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-body').textContent = body;
+    document.getElementById('confirm-modal').classList.add('show');
+    confirmResolver = resolve;
+  });
+}
+
+function closeConfirmModal(confirmed) {
+  document.getElementById('confirm-modal').classList.remove('show');
+  if (confirmResolver) {
+    confirmResolver(confirmed);
+    confirmResolver = null;
+  }
+}
+
+// Cerrar al tocar fuera (equivale a cancelar)
+document.getElementById('confirm-modal').addEventListener('click', e => {
+  if (e.target.id === 'confirm-modal') closeConfirmModal(false);
+});
+
+// ============ INICIO COMO REFRESCO ============
+// Sobrescribimos showScreen para que un toque en "Inicio" estando ya en home
+// haga un reset completo (descarta foto cargada y resultado).
+// - Si está procesando: ignoramos el toque (regla A).
+// - Si hay resultado sin guardar: pedimos confirmación (regla B).
+const _originalShowScreen = showScreen;
+
+window.showScreen = async function(name) {
+  const homeScreen = document.getElementById('screen-home');
+  const isAlreadyOnHome = homeScreen && homeScreen.classList.contains('active');
+  const isProcessing = document.getElementById('processing').classList.contains('show');
+
+  // Caso especial: tocar "Inicio" estando ya en home
+  if (name === 'home' && isAlreadyOnHome) {
+    // Regla A: si está procesando, ignoramos
+    if (isProcessing) return;
+
+    // No hay nada que resetear
+    if (!state.currentImage && !state.resultImage) return;
+
+    // Regla B: si hay resultado sin guardar, pedimos confirmación
+    if (state.resultImage) {
+      const confirmed = await showConfirmModal(
+        '¿Empezar de nuevo?',
+        'Vas a perder la foto restaurada. Si quieres conservarla, descárgala primero.'
+      );
+      if (!confirmed) return;
+    }
+
+    // Reset limpio (ya existe la función)
+    resetForNextRestore();
+    return;
+  }
+
+  // Comportamiento normal de cambio de pantalla
+  _originalShowScreen(name);
+};
+
+// ============ MODAL ERROR ============
 function showErrorModal(title, body, hint) {
   document.getElementById('error-title').textContent = title;
   document.getElementById('error-body').innerHTML = body;
