@@ -171,14 +171,19 @@
   .polaroid {
     width: 100%;
     max-width: 360px;
-    aspect-ratio: 4 / 5.2;
     background: var(--blanco-calido);
     box-shadow: var(--sombra-marco);
     padding: 18px 18px 60px;
     position: relative;
     transform: rotate(-0.5deg);
-    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+                aspect-ratio 0.35s ease;
     margin-top: 0;
+    display: flex;
+    flex-direction: column;
+    /* aspect-ratio se establece via JS según el ratio de la imagen.
+       Por defecto (sin foto) imitamos el polaroid clásico vertical. */
+    aspect-ratio: 4 / 5.2;
   }
   .polaroid::before {
     /* sutil tinte de papel viejo */
@@ -192,8 +197,8 @@
 
 
   .polaroid-window {
+    flex: 1;
     width: 100%;
-    aspect-ratio: 1 / 1;
     background:
       repeating-linear-gradient(45deg, rgba(47,47,47,0.03) 0 2px, transparent 2px 12px),
       var(--gris-fondo);
@@ -1294,6 +1299,52 @@ function pickSource(type) {
   });
 });
 
+// ============ POLAROID ADAPTATIVA ============
+// Ajusta el aspect-ratio del marco a la foto del usuario, con tope entre
+// 3:4 (vertical) y 4:3 (horizontal). Fotos fuera de ese rango usan
+// letterbox dentro del rango (la imagen se ve completa, con bandas a los
+// lados o arriba/abajo).
+const ASPECT_MIN = 3 / 4;   // 0.75 — más vertical permitido
+const ASPECT_MAX = 4 / 3;   // 1.333 — más horizontal permitido
+const ASPECT_DEFAULT = 1;    // cuadrado por defecto (estado vacío)
+const POLAROID_PADDING_TOP = 18;
+const POLAROID_PADDING_BOTTOM = 60;
+const POLAROID_PADDING_SIDES = 18;
+
+function setPolaroidAspectRatio(imageRatio) {
+  const polaroid = document.getElementById('polaroid');
+  if (!polaroid) return;
+
+  // Aplicar tope al ratio interior
+  const innerRatio = Math.max(ASPECT_MIN, Math.min(ASPECT_MAX, imageRatio));
+
+  // Calcular ratio del exterior (incluye padding fijo)
+  // ancho_ext = ancho_int + 2 * padding_lados
+  // alto_ext = ancho_int / innerRatio + padding_top + padding_bottom
+  // Asumimos ancho_int = 360 - 2*18 = 324 (max-width 360 menos paddings laterales)
+  const innerW = 324;
+  const innerH = innerW / innerRatio;
+  const outerW = innerW + POLAROID_PADDING_SIDES * 2;
+  const outerH = innerH + POLAROID_PADDING_TOP + POLAROID_PADDING_BOTTOM;
+  const outerRatio = outerW / outerH;
+
+  polaroid.style.aspectRatio = outerRatio.toFixed(4);
+}
+
+function resetPolaroidAspectRatio() {
+  setPolaroidAspectRatio(ASPECT_DEFAULT);
+}
+
+// Carga una imagen y devuelve su ratio (width/height)
+function getImageRatio(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img.naturalWidth / img.naturalHeight);
+    img.onerror = () => resolve(ASPECT_DEFAULT);
+    img.src = dataUrl;
+  });
+}
+
 function renderPolaroid() {
   const win = document.getElementById('polaroid-window');
   const empty = document.getElementById('empty-state');
@@ -1320,6 +1371,8 @@ function renderPolaroid() {
     caption.textContent = '— mi memoria —';
     caption.style.display = '';
     resultActions.classList.remove('show');
+    // Estado vacío → ratio por defecto
+    resetPolaroidAspectRatio();
   }
 }
 
@@ -1329,6 +1382,85 @@ const ACTIONS = {
   colorize: { name: 'Coloreando', msgs: ['Identificando elementos','Eligiendo paleta histórica','Aplicando tonos naturales'] },
   repair: { name: 'Reparando arañazos', msgs: ['Detectando daños','Reconstruyendo zonas','Difuminando bordes'] },
 };
+
+// ============ DETECCIÓN Y CONVERSIÓN A B/N ============
+// Bringing Old Photos a veces introduce ligero tinte de color en fotos
+// originalmente B/N. Detectamos si la entrada era monocroma y, si lo era,
+// reconvertimos la salida a escala de grises antes de mostrarla.
+
+async function isMonochrome(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      // Reescalamos a 100px para análisis rápido
+      const SAMPLE_SIZE = 100;
+      const canvas = document.createElement('canvas');
+      const scale = SAMPLE_SIZE / Math.max(img.width, img.height);
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let totalSaturation = 0;
+      let pixelCount = 0;
+
+      // Calcular saturación promedio (modelo HSL aproximado)
+      for (let i = 0; i < pixels.length; i += 4) {
+        const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        // Saturación = diferencia entre canales / valor máximo
+        const sat = max === 0 ? 0 : (max - min) / max;
+        totalSaturation += sat;
+        pixelCount++;
+      }
+
+      const avgSaturation = totalSaturation / pixelCount;
+      // Umbral: <0.10 (10%) → consideramos B/N o sepia muy desaturado
+      // Las fotos antiguas B/N puras dan ~0.02-0.05
+      // Sepias antiguos dan ~0.10-0.20
+      // Color clásico desaturado da ~0.25+
+      resolve(avgSaturation < 0.10);
+    };
+    img.onerror = () => resolve(false);
+    img.src = dataUrl;
+  });
+}
+
+async function convertToGrayscale(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = imageData.data;
+
+      // Conversión luminance-aware (Rec. 709): 0.2126R + 0.7152G + 0.0722B
+      // Más fiel a la percepción humana que el promedio simple
+      for (let i = 0; i < pixels.length; i += 4) {
+        const gray = Math.round(
+          pixels[i] * 0.2126 +
+          pixels[i + 1] * 0.7152 +
+          pixels[i + 2] * 0.0722
+        );
+        pixels[i] = gray;
+        pixels[i + 1] = gray;
+        pixels[i + 2] = gray;
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
+    };
+    img.onerror = () => resolve(dataUrl); // fallback: devolver original sin convertir
+    img.src = dataUrl;
+  });
+}
 
 async function processImage(action) {
   if (!state.currentImage) {
@@ -1350,8 +1482,23 @@ async function processImage(action) {
     msgEl.textContent = cfg.msgs[i];
   }, 1100);
 
+  // Si la acción es 'repair' y la foto original es B/N o sepia,
+  // marcamos para forzar el resultado a B/N tras el procesado.
+  // Bringing Old Photos a veces introduce ligero color en zonas reconstruidas.
+  let forceMonochromeOutput = false;
+  if (action === 'repair') {
+    forceMonochromeOutput = await isMonochrome(state.currentImage);
+  }
+
   try {
-    const result = await callRestoreAPI(state.currentImage, action);
+    let result = await callRestoreAPI(state.currentImage, action);
+
+    // Si la entrada era B/N, asegurar que la salida también lo sea.
+    // Esto corrige el comportamiento ocasional de Bringing Old Photos
+    // de introducir tinte de color en zonas reconstruidas.
+    if (forceMonochromeOutput) {
+      result = await convertToGrayscale(result);
+    }
 
     clearInterval(msgInterval);
     state.resultImage = result;
@@ -2114,6 +2261,10 @@ async function confirmCrop() {
     state.currentImage = cropped;
     state.resultImage = null;
     state.appliedAction = null;
+
+    // Adaptar la polaroid al ratio del recorte (con tope 3:4 a 4:3)
+    const croppedRatio = await getImageRatio(cropped);
+    setPolaroidAspectRatio(croppedRatio);
 
     document.getElementById('crop-overlay').classList.remove('show');
     document.querySelectorAll('.crop-handle, .crop-edge').forEach(el => el.remove());
