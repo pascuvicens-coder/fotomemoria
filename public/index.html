@@ -1348,26 +1348,41 @@ function getImageRatio(dataUrl) {
 function renderPolaroid() {
   const win = document.getElementById('polaroid-window');
   const empty = document.getElementById('empty-state');
+  const fab = document.getElementById('fab-btn');
   const caption = document.getElementById('polaroid-caption');
   const resultActions = document.getElementById('result-actions');
 
-  win.innerHTML = '';
+  // Eliminar SOLO la imagen previa (si existía) sin tocar empty-state ni fab.
+  // Antes usábamos win.innerHTML = '' que destruía todo el contenido del window,
+  // incluyendo empty-state y fab-btn — y al re-añadirlos como elementos huérfanos
+  // algunos navegadores no los pintaban correctamente.
+  const existingImg = win.querySelector('img');
+  if (existingImg) existingImg.remove();
+
   if (state.resultImage) {
+    // Mostrar imagen resultado, ocultar empty-state y fab
     const img = document.createElement('img');
     img.src = state.resultImage;
     win.appendChild(img);
+    empty.style.display = 'none';
+    fab.style.display = 'none';
     caption.textContent = '';
     caption.style.display = 'none';
     resultActions.classList.add('show');
   } else if (state.currentImage) {
+    // Mostrar imagen original, ocultar empty-state y fab
     const img = document.createElement('img');
     img.src = state.currentImage;
     win.appendChild(img);
+    empty.style.display = 'none';
+    fab.style.display = 'none';
     caption.textContent = '— elige una mejora —';
     caption.style.display = '';
     resultActions.classList.remove('show');
   } else {
-    win.appendChild(empty);
+    // Estado vacío: mostrar empty-state y fab, ocultar imagen (ya borrada arriba)
+    empty.style.display = '';
+    fab.style.display = '';
     caption.textContent = '— mi memoria —';
     caption.style.display = '';
     resultActions.classList.remove('show');
